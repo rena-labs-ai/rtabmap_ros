@@ -77,6 +77,8 @@ set(srv_files
    "srv/GetPlan.srv"
    "srv/AddLink.srv"
    "srv/GetNodeData.srv"
+   "srv/KeepNodeData.srv"
+   "srv/ReleaseNodeData.srv"
    "srv/GetNodesInRadius.srv"
    "srv/LoadDatabase.srv"
    "srv/DetectMoreLoopClosures.srv"

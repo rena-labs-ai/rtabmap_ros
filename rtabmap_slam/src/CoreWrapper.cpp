@@ -686,6 +686,8 @@ CoreWrapper::CoreWrapper(const rclcpp::NodeOptions & options) :
 	setModeLocalizationSrv_ = this->create_service<std_srvs::srv::Empty>(servicePrefix + "set_mode_localization", std::bind(&CoreWrapper::setModeLocalizationCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), rclcpp::ServicesQoS(), processingCallbackGroup_);
 	setModeMappingSrv_ = this->create_service<std_srvs::srv::Empty>(servicePrefix + "set_mode_mapping", std::bind(&CoreWrapper::setModeMappingCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), rclcpp::ServicesQoS(), processingCallbackGroup_);
 	getNodeDataSrv_ = this->create_service<rtabmap_msgs::srv::GetNodeData>(servicePrefix + "get_node_data", std::bind(&CoreWrapper::getNodeDataCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), rclcpp::ServicesQoS(), processingCallbackGroup_);
+	keepNodeDataSrv_ = this->create_service<rtabmap_msgs::srv::KeepNodeData>(servicePrefix + "keep_node_data", std::bind(&CoreWrapper::keepNodeDataCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), rclcpp::ServicesQoS(), processingCallbackGroup_);
+	releaseNodeDataSrv_ = this->create_service<rtabmap_msgs::srv::ReleaseNodeData>(servicePrefix + "release_node_data", std::bind(&CoreWrapper::releaseNodeDataCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), rclcpp::ServicesQoS(), processingCallbackGroup_);
 	getMapDataSrv_ = this->create_service<rtabmap_msgs::srv::GetMap>(servicePrefix + "get_map_data", std::bind(&CoreWrapper::getMapDataCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), rclcpp::ServicesQoS(), processingCallbackGroup_);
 	getMapData2Srv_ = this->create_service<rtabmap_msgs::srv::GetMap2>(servicePrefix + "get_map_data2", std::bind(&CoreWrapper::getMapData2Callback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), rclcpp::ServicesQoS(), processingCallbackGroup_);
 	getMapSrv_ = this->create_service<nav_msgs::srv::GetMap>(servicePrefix + "get_map", std::bind(&CoreWrapper::getMapCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), rclcpp::ServicesQoS(), processingCallbackGroup_);
@@ -3924,6 +3926,22 @@ void CoreWrapper::getNodeDataCallback(
 			res->data.push_back(msg);
 		}
 	}
+}
+
+void CoreWrapper::keepNodeDataCallback(
+		const std::shared_ptr<rmw_request_id_t>,
+		const std::shared_ptr<rtabmap_msgs::srv::KeepNodeData::Request> req,
+		std::shared_ptr<rtabmap_msgs::srv::KeepNodeData::Response> res)
+{
+	res->kept = rtabmap_.keepNodeData(req->keep, req->release);
+}
+
+void CoreWrapper::releaseNodeDataCallback(
+		const std::shared_ptr<rmw_request_id_t>,
+		const std::shared_ptr<rtabmap_msgs::srv::ReleaseNodeData::Request> req,
+		std::shared_ptr<rtabmap_msgs::srv::ReleaseNodeData::Response>)
+{
+	rtabmap_.keepNodeData(std::vector<int>(), req->ids);
 }
 
 void CoreWrapper::getMapDataCallback(
