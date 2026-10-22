@@ -69,7 +69,20 @@ public:
 			const sensor_msgs::msg::Image::ConstSharedPtr depth,
 			const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo);
 
+	void labelsCallback(
+			const sensor_msgs::msg::Image::ConstSharedPtr image,
+			const sensor_msgs::msg::Image::ConstSharedPtr depth,
+			const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo,
+			const sensor_msgs::msg::Image::ConstSharedPtr labels);
+
 private:
+	void publish(
+			const sensor_msgs::msg::Image::ConstSharedPtr image,
+			const sensor_msgs::msg::Image::ConstSharedPtr depth,
+			const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo,
+			const sensor_msgs::msg::Image::ConstSharedPtr labels);
+
+
 	double depthScale_;
 	int decimation_;
 	double compressedRate_;
@@ -86,12 +99,19 @@ private:
 	image_transport::SubscriberFilter imageSub_;
 	image_transport::SubscriberFilter imageDepthSub_;
 	message_filters::Subscriber<sensor_msgs::msg::CameraInfo> cameraInfoSub_;
+	message_filters::Subscriber<sensor_msgs::msg::Image> labelsSub_;
 
 	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo> MyApproxSyncDepthPolicy;
 	message_filters::Synchronizer<MyApproxSyncDepthPolicy> * approxSyncDepth_;
 
 	typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo> MyExactSyncDepthPolicy;
 	message_filters::Synchronizer<MyExactSyncDepthPolicy> * exactSyncDepth_;
+
+	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo, sensor_msgs::msg::Image> MyApproxSyncLabelsPolicy;
+	message_filters::Synchronizer<MyApproxSyncLabelsPolicy> * approxSyncLabels_;
+
+	typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo, sensor_msgs::msg::Image> MyExactSyncLabelsPolicy;
+	message_filters::Synchronizer<MyExactSyncLabelsPolicy> * exactSyncLabels_;
 
 	std::unique_ptr<SyncDiagnostic> syncDiagnostic_;
 };

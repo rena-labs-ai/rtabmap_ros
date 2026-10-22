@@ -177,7 +177,8 @@ private:
 				const std::vector<rtabmap_msgs::msg::GlobalDescriptor> & globalDescriptorMsgs = std::vector<rtabmap_msgs::msg::GlobalDescriptor>(),
 				const std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> > & localKeyPoints = std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> >(),
 				const std::vector<std::vector<rtabmap_msgs::msg::Point3f> > & localPoints3d = std::vector<std::vector<rtabmap_msgs::msg::Point3f> >(),
-				const std::vector<cv::Mat> & localDescriptors = std::vector<cv::Mat>());
+				const std::vector<cv::Mat> & localDescriptors = std::vector<cv::Mat>(),
+				const std::vector<cv_bridge::CvImageConstPtr> & labelMsgs = std::vector<cv_bridge::CvImageConstPtr>());
 	// Callback called from sync thread
 	void commonMultiCameraCallbackImpl(
 				const std::string & odomFrameId,
@@ -192,7 +193,8 @@ private:
 				const std::vector<rtabmap_msgs::msg::GlobalDescriptor> & globalDescriptorMsgs,
 				const std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> > & localKeyPoints,
 				const std::vector<std::vector<rtabmap_msgs::msg::Point3f> > & localPoints3d,
-				const std::vector<cv::Mat> & localDescriptors);
+				const std::vector<cv::Mat> & localDescriptors,
+				const std::vector<cv_bridge::CvImageConstPtr> & labelMsgs);
 	// Callback called from sync thread
 	virtual void commonLaserScanCallback(
 				const nav_msgs::msg::Odometry::ConstSharedPtr & odomMsg,

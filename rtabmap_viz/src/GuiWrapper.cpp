@@ -537,7 +537,8 @@ void GuiWrapper::commonMultiCameraCallback(
 		const std::vector<rtabmap_msgs::msg::GlobalDescriptor> &,
 		const std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> > &,
 		const std::vector<std::vector<rtabmap_msgs::msg::Point3f> > &,
-		const std::vector<cv::Mat> &)
+		const std::vector<cv::Mat> &,
+		const std::vector<cv_bridge::CvImageConstPtr> &)
 {
 	UASSERT(imageMsgs.size() == 0 || (imageMsgs.size() == cameraInfoMsgs.size()));
 

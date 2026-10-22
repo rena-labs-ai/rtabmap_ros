@@ -267,6 +267,15 @@ void toCvShare(const rtabmap_msgs::msg::RGBDImage & image, const std::shared_ptr
 	}
 }
 
+cv_bridge::CvImageConstPtr labelsToCvShare(const rtabmap_msgs::msg::RGBDImage & image, const std::shared_ptr<void const>& trackedObject)
+{
+	if(image.labels.data.empty())
+	{
+		return std::make_shared<cv_bridge::CvImage>();
+	}
+	return cv_bridge::toCvShare(image.labels, trackedObject);
+}
+
 void rgbdImageToROS(const rtabmap::SensorData & data, rtabmap_msgs::msg::RGBDImage & msg, const std::string & sensorFrameId)
 {
 	std_msgs::msg::Header header;

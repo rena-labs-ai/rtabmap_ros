@@ -200,6 +200,15 @@ void toCvShare(const rtabmap_msgs::msg::RGBDImage::ConstSharedPtr & image, cv_br
 void toCvShare(const rtabmap_msgs::msg::RGBDImage & image, const std::shared_ptr<void const>& trackedObject, cv_bridge::CvImageConstPtr & rgb, cv_bridge::CvImageConstPtr & depth);
 
 /**
+ * @brief Extract the labels of an RGBDImage message without copying.
+ *
+ * @param[in]  image         the message to read
+ * @param[in]  trackedObject object whose lifetime keeps the message buffers alive
+ * @return the labels, an empty image when the field is not set
+ */
+cv_bridge::CvImageConstPtr labelsToCvShare(const rtabmap_msgs::msg::RGBDImage & image, const std::shared_ptr<void const>& trackedObject);
+
+/**
  * @brief Fill an RGBDImage message from a SensorData.
  *
  * Supports a single RGB-D camera or a single stereo pair; multi-camera data cannot be
