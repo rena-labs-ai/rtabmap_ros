@@ -294,7 +294,12 @@ void RGBDSync::publish(
 			cvLabels.header = labels->header;
 			cvLabels.encoding = labels->encoding;
 			cvLabels.image = cv_bridge::toCvShare(labels)->image;
-			if(cvLabels.image.size() != imageDepthPtr->image.size())
+			if(rclcpp::Time(labels->header.stamp) != rclcpp::Time(depth->header.stamp))
+			{
+				RCLCPP_WARN(this->get_logger(), "Labels (stamp=%f) are not the depth frame's (stamp=%f), "
+					"they are not forwarded.", rtabmap_conversions::timestampFromROS(labels->header.stamp), depthStamp);
+			}
+			else if(cvLabels.image.size() != imageDepthPtr->image.size())
 			{
 				RCLCPP_WARN(this->get_logger(), "Labels (%dx%d) must have the depth image's size (%dx%d), "
 					"they are not forwarded.", cvLabels.image.cols, cvLabels.image.rows, depth->width, depth->height);

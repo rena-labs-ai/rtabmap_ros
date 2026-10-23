@@ -1718,6 +1718,7 @@ void CoreWrapper::commonMultiCameraCallbackImpl(
 	}
 
 	std::vector<cv::Mat> labels;
+	const cv::Size cameraDepthSize(labelMsgs.empty() ? 0 : depth.cols / (int)labelMsgs.size(), depth.rows);
 	for(const cv_bridge::CvImageConstPtr & labelMsg : labelMsgs)
 	{
 		if(labelMsg.get() && !labelMsg->image.empty())
@@ -1727,17 +1728,22 @@ void CoreWrapper::commonMultiCameraCallbackImpl(
 	}
 	if(!labels.empty())
 	{
-		cv::Mat labelsMat;
-		cv::hconcat(labels, labelsMat);
-		if(labels.size() == labelMsgs.size() && labelsMat.size() == depth.size() && labelsMat.type() == CV_8UC1)
+		bool valid = labels.size() == labelMsgs.size();
+		for(const cv::Mat & cameraLabels : labels)
 		{
+			valid = valid && cameraLabels.type() == CV_8UC1 && cameraLabels.size() == cameraDepthSize;
+		}
+		if(valid)
+		{
+			cv::Mat labelsMat;
+			cv::hconcat(labels, labelsMat);
 			syncData_.data.setLabels(labelsMat);
 		}
 		else
 		{
 			RCLCPP_WARN(this->get_logger(), "Labels ignored: every camera needs mono8 labels of its depth image's size "
-					"(got %ld of %ld cameras, %dx%d for depth %dx%d).",
-					labels.size(), labelMsgs.size(), labelsMat.cols, labelsMat.rows, depth.cols, depth.rows);
+					"(%dx%d; got labels for %ld of %ld cameras).",
+					cameraDepthSize.width, cameraDepthSize.height, labels.size(), labelMsgs.size());
 		}
 	}
 
