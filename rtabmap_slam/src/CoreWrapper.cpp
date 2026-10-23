@@ -1347,7 +1347,8 @@ void CoreWrapper::commonMultiCameraCallback(
 		const std::vector<rtabmap_msgs::msg::GlobalDescriptor> & globalDescriptorMsgs,
 		const std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> > & localKeyPoints,
 		const std::vector<std::vector<rtabmap_msgs::msg::Point3f> > & localPoints3d,
-		const std::vector<cv::Mat> & localDescriptors)
+		const std::vector<cv::Mat> & localDescriptors,
+		const std::vector<cv_bridge::CvImageConstPtr> & labelMsgs)
 {
 	std::string odomFrameId;
 	if(odomMsg.get())
@@ -1418,7 +1419,8 @@ void CoreWrapper::commonMultiCameraCallback(
 				globalDescriptorMsgs,
 				localKeyPoints,
 				localPoints3d,
-				localDescriptors);
+				localDescriptors,
+				labelMsgs);
 		
 		if(syncData_.valid) {
 			syncTimer_->reset();
@@ -1439,7 +1441,8 @@ void CoreWrapper::commonMultiCameraCallbackImpl(
 		const std::vector<rtabmap_msgs::msg::GlobalDescriptor> & globalDescriptorMsgs,
 		const std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> > & localKeyPointsMsgs,
 		const std::vector<std::vector<rtabmap_msgs::msg::Point3f> > & localPoints3dMsgs,
-		const std::vector<cv::Mat> & localDescriptorsMsgs)
+		const std::vector<cv::Mat> & localDescriptorsMsgs,
+		const std::vector<cv_bridge::CvImageConstPtr> & labelMsgs)
 {
 	UTimer timerConversion;
 	cv::Mat rgb;
@@ -1712,6 +1715,36 @@ void CoreWrapper::commonMultiCameraCallbackImpl(
 		UASSERT(points.empty() || points.size() == keypoints.size());
 		UASSERT(descriptors.empty() || descriptors.rows == (int)keypoints.size());
 		syncData_.data.setFeatures(keypoints, points, descriptors);
+	}
+
+	std::vector<cv::Mat> labels;
+	const cv::Size cameraDepthSize(labelMsgs.empty() ? 0 : depth.cols / (int)labelMsgs.size(), depth.rows);
+	for(const cv_bridge::CvImageConstPtr & labelMsg : labelMsgs)
+	{
+		if(labelMsg.get() && !labelMsg->image.empty())
+		{
+			labels.push_back(labelMsg->image);
+		}
+	}
+	if(!labels.empty())
+	{
+		bool valid = labels.size() == labelMsgs.size();
+		for(const cv::Mat & cameraLabels : labels)
+		{
+			valid = valid && cameraLabels.type() == CV_8UC1 && cameraLabels.size() == cameraDepthSize;
+		}
+		if(valid)
+		{
+			cv::Mat labelsMat;
+			cv::hconcat(labels, labelsMat);
+			syncData_.data.setLabels(labelsMat);
+		}
+		else
+		{
+			RCLCPP_WARN(this->get_logger(), "Labels ignored: every camera needs mono8 labels of its depth image's size "
+					"(%dx%d; got labels for %ld of %ld cameras).",
+					cameraDepthSize.width, cameraDepthSize.height, labels.size(), labelMsgs.size());
+		}
 	}
 
 	syncData_.valid = true;

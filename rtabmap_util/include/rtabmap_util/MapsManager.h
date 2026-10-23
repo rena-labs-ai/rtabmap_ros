@@ -251,6 +251,7 @@ private:
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudObstaclesPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridMapPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridProbMapPub_;
+	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr labelMapPub_;
 #ifdef RTABMAP_OCTOMAP
 #ifdef WITH_OCTOMAP_MSGS
 	rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr octoMapPubBin_;
@@ -281,6 +282,15 @@ private:
 	rtabmap::OccupancyGrid * occupancyGrid_;
 	rtabmap::LocalGridMaker * localMapMaker_;
 	bool gridUpdated_;
+
+	/// Nodes' label cells (rtabmap::SensorData::gridLabelCells()), assembled like the
+	/// grid map but apart from it: floor cells clear and obstacle cells mark.
+	rtabmap::LocalGridCache labelMaps_;
+	rtabmap::OccupancyGrid * labelGrid_;
+	bool labelGridUpdated_;
+	int labelObstacle_;
+	int labelFloor_;
+	void addLabelCells(int id, const cv::Mat & cells);
 
 #ifdef RTABMAP_OCTOMAP
 	rtabmap::OctoMap * octomap_;

@@ -36,9 +36,13 @@ namespace rtabmap_sync {
 		if(syncDiagnostic_.get()) {syncDiagnostic_->tickInput(image1Msg->header.stamp);} \
 		std::vector<cv_bridge::CvImageConstPtr> imageMsgs(3); \
 		std::vector<cv_bridge::CvImageConstPtr> depthMsgs(3); \
+		std::vector<cv_bridge::CvImageConstPtr> labelMsgs(3); \
 		rtabmap_conversions::toCvShare(image1Msg, imageMsgs[0], depthMsgs[0]); \
+		labelMsgs[0] = rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg); \
 		rtabmap_conversions::toCvShare(image2Msg, imageMsgs[1], depthMsgs[1]); \
+		labelMsgs[1] = rtabmap_conversions::labelsToCvShare(*image2Msg, image2Msg); \
 		rtabmap_conversions::toCvShare(image3Msg, imageMsgs[2], depthMsgs[2]); \
+		labelMsgs[2] = rtabmap_conversions::labelsToCvShare(*image3Msg, image3Msg); \
 		if(!depthMsgs[0].get()) \
 			depthMsgs.clear(); \
 		std::vector<sensor_msgs::msg::CameraInfo> cameraInfoMsgs; \
@@ -85,7 +89,7 @@ void CommonDataSubscriber::rgbd3Callback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3Scan2dCallback(
 		const rtabmap_msgs::msg::RGBDImage::ConstSharedPtr image1Msg,
@@ -102,7 +106,7 @@ void CommonDataSubscriber::rgbd3Scan2dCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, *scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3Scan3dCallback(
 		const rtabmap_msgs::msg::RGBDImage::ConstSharedPtr image1Msg,
@@ -119,7 +123,7 @@ void CommonDataSubscriber::rgbd3Scan3dCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			*scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3ScanDescCallback(
 		const rtabmap_msgs::msg::RGBDImage::ConstSharedPtr image1Msg,
@@ -139,7 +143,7 @@ void CommonDataSubscriber::rgbd3ScanDescCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanDescMsg->scan,
 			scanDescMsg->scan_cloud, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3InfoCallback(
 		const rtabmap_msgs::msg::RGBDImage::ConstSharedPtr image1Msg,
@@ -156,7 +160,7 @@ void CommonDataSubscriber::rgbd3InfoCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 
 // 2 RGBD + Odom
@@ -175,7 +179,7 @@ void CommonDataSubscriber::rgbd3OdomCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3OdomScan2dCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -192,7 +196,7 @@ void CommonDataSubscriber::rgbd3OdomScan2dCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, *scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3OdomScan3dCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -209,7 +213,7 @@ void CommonDataSubscriber::rgbd3OdomScan3dCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			*scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3OdomScanDescCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -229,7 +233,7 @@ void CommonDataSubscriber::rgbd3OdomScanDescCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanDescMsg->scan,
 			scanDescMsg->scan_cloud, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3OdomInfoCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -246,7 +250,7 @@ void CommonDataSubscriber::rgbd3OdomInfoCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 
 #ifdef RTABMAP_SYNC_USER_DATA
@@ -266,7 +270,7 @@ void CommonDataSubscriber::rgbd3DataCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3DataScan2dCallback(
 		const rtabmap_msgs::msg::UserData::ConstSharedPtr userDataMsg,
@@ -283,7 +287,7 @@ void CommonDataSubscriber::rgbd3DataScan2dCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, *scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3DataScan3dCallback(
 		const rtabmap_msgs::msg::UserData::ConstSharedPtr userDataMsg,
@@ -300,7 +304,7 @@ void CommonDataSubscriber::rgbd3DataScan3dCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			*scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3DataScanDescCallback(
 		const rtabmap_msgs::msg::UserData::ConstSharedPtr userDataMsg,
@@ -320,7 +324,7 @@ void CommonDataSubscriber::rgbd3DataScanDescCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanDescMsg->scan,
 			scanDescMsg->scan_cloud, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3DataInfoCallback(
 		const rtabmap_msgs::msg::UserData::ConstSharedPtr userDataMsg,
@@ -337,7 +341,7 @@ void CommonDataSubscriber::rgbd3DataInfoCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 // 2 RGBD + Odom + User Data
 void CommonDataSubscriber::rgbd3OdomDataCallback(
@@ -355,7 +359,7 @@ void CommonDataSubscriber::rgbd3OdomDataCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3OdomDataScan2dCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -372,7 +376,7 @@ void CommonDataSubscriber::rgbd3OdomDataScan2dCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, *scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3OdomDataScan3dCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -389,7 +393,7 @@ void CommonDataSubscriber::rgbd3OdomDataScan3dCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			*scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3OdomDataScanDescCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -409,7 +413,7 @@ void CommonDataSubscriber::rgbd3OdomDataScanDescCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanDescMsg->scan,
 			scanDescMsg->scan_cloud, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 void CommonDataSubscriber::rgbd3OdomDataInfoCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -426,7 +430,7 @@ void CommonDataSubscriber::rgbd3OdomDataInfoCallback(
 	commonMultiCameraCallback(odomMsg, userDataMsg, imageMsgs,
 			depthMsgs, cameraInfoMsgs, depthCameraInfoMsgs, scanMsg,
 			scan3dMsg, odomInfoMsg, globalDescriptorMsgs,
-			localKeyPoints, localPoints3d, localDescriptors);
+			localKeyPoints, localPoints3d, localDescriptors, labelMsgs);
 }
 #endif
 

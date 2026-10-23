@@ -1073,7 +1073,8 @@ void CommonDataSubscriber::commonSingleCameraCallback(
 		const std::vector<rtabmap_msgs::msg::GlobalDescriptor> & globalDescriptorMsgs,
 		const std::vector<rtabmap_msgs::msg::KeyPoint> & localKeyPoints,
 		const std::vector<rtabmap_msgs::msg::Point3f> & localPoints3d,
-		const cv::Mat & localDescriptors)
+		const cv::Mat & localDescriptors,
+		const cv_bridge::CvImageConstPtr & labelMsg)
 {
 	std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> > localKeyPointsMsgs;
 	localKeyPointsMsgs.push_back(localKeyPoints);
@@ -1109,7 +1110,8 @@ void CommonDataSubscriber::commonSingleCameraCallback(
 			globalDescriptorMsgs,
 			localKeyPointsMsgs,
 			localPoints3dMsgs,
-			localDescriptorsMsgs);
+			localDescriptorsMsgs,
+			std::vector<cv_bridge::CvImageConstPtr>(1, labelMsg));
 }
 
 void CommonDataSubscriber::tick(const rclcpp::Time & stamp, double targetFrequency)

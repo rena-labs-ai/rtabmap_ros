@@ -56,7 +56,8 @@ void CommonDataSubscriber::rgbdCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdScan2dCallback(
 		const rtabmap_msgs::msg::RGBDImage::ConstSharedPtr image1Msg,
@@ -81,7 +82,8 @@ void CommonDataSubscriber::rgbdScan2dCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			*scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdScan3dCallback(
 		const rtabmap_msgs::msg::RGBDImage::ConstSharedPtr image1Msg,
@@ -106,7 +108,8 @@ void CommonDataSubscriber::rgbdScan3dCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, *scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdScanDescCallback(
 		const rtabmap_msgs::msg::RGBDImage::ConstSharedPtr image1Msg,
@@ -130,7 +133,8 @@ void CommonDataSubscriber::rgbdScanDescCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanDescMsg->scan, scanDescMsg->scan_cloud, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdInfoCallback(
 		const rtabmap_msgs::msg::RGBDImage::ConstSharedPtr image1Msg,
@@ -155,7 +159,8 @@ void CommonDataSubscriber::rgbdInfoCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 
 // 1 RGBD camera + Odom
@@ -182,7 +187,8 @@ void CommonDataSubscriber::rgbdOdomCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdOdomScan2dCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -207,7 +213,8 @@ void CommonDataSubscriber::rgbdOdomScan2dCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			*scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdOdomScan3dCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -232,7 +239,8 @@ void CommonDataSubscriber::rgbdOdomScan3dCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, *scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdOdomScanDescCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -260,7 +268,8 @@ void CommonDataSubscriber::rgbdOdomScanDescCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanDescMsg->scan, scanDescMsg->scan_cloud, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdOdomInfoCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -285,7 +294,8 @@ void CommonDataSubscriber::rgbdOdomInfoCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 
 #ifdef RTABMAP_SYNC_USER_DATA
@@ -313,7 +323,8 @@ void CommonDataSubscriber::rgbdDataCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdDataScan2dCallback(
 		const rtabmap_msgs::msg::UserData::ConstSharedPtr userDataMsg,
@@ -338,7 +349,8 @@ void CommonDataSubscriber::rgbdDataScan2dCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			*scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdDataScan3dCallback(
 		const rtabmap_msgs::msg::UserData::ConstSharedPtr userDataMsg,
@@ -363,7 +375,8 @@ void CommonDataSubscriber::rgbdDataScan3dCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, *scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdDataScanDescCallback(
 		const rtabmap_msgs::msg::UserData::ConstSharedPtr userDataMsg,
@@ -391,7 +404,8 @@ void CommonDataSubscriber::rgbdDataScanDescCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanDescMsg->scan, scanDescMsg->scan_cloud, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdDataInfoCallback(
 		const rtabmap_msgs::msg::UserData::ConstSharedPtr userDataMsg,
@@ -416,7 +430,8 @@ void CommonDataSubscriber::rgbdDataInfoCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 
 // 1 RGBD camera + Odom + User Data
@@ -443,7 +458,8 @@ void CommonDataSubscriber::rgbdOdomDataCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdOdomDataScan2dCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -468,7 +484,8 @@ void CommonDataSubscriber::rgbdOdomDataScan2dCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			*scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdOdomDataScan3dCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -493,7 +510,8 @@ void CommonDataSubscriber::rgbdOdomDataScan3dCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, *scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdOdomDataScanDescCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -521,7 +539,8 @@ void CommonDataSubscriber::rgbdOdomDataScanDescCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanDescMsg->scan, scanDescMsg->scan_cloud, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 void CommonDataSubscriber::rgbdOdomDataInfoCallback(
 		const nav_msgs::msg::Odometry::ConstSharedPtr odomMsg,
@@ -545,7 +564,8 @@ void CommonDataSubscriber::rgbdOdomDataInfoCallback(
 			depth, image1Msg->rgb_camera_info, image1Msg->depth_camera_info,
 			scanMsg, scan3dMsg, odomInfoMsg,
 			globalDescriptorMsgs, image1Msg->key_points, image1Msg->points,
-			rtabmap::uncompressData(image1Msg->descriptors));
+			rtabmap::uncompressData(image1Msg->descriptors),
+			rtabmap_conversions::labelsToCvShare(*image1Msg, image1Msg));
 }
 #endif
 

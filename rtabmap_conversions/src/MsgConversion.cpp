@@ -267,6 +267,15 @@ void toCvShare(const rtabmap_msgs::msg::RGBDImage & image, const std::shared_ptr
 	}
 }
 
+cv_bridge::CvImageConstPtr labelsToCvShare(const rtabmap_msgs::msg::RGBDImage & image, const std::shared_ptr<void const>& trackedObject)
+{
+	if(image.labels.data.empty())
+	{
+		return std::make_shared<cv_bridge::CvImage>();
+	}
+	return cv_bridge::toCvShare(image.labels, trackedObject);
+}
+
 void rgbdImageToROS(const rtabmap::SensorData & data, rtabmap_msgs::msg::RGBDImage & msg, const std::string & sensorFrameId)
 {
 	std_msgs::msg::Header header;
@@ -322,6 +331,15 @@ void rgbdImageToROS(const rtabmap::SensorData & data, rtabmap_msgs::msg::RGBDIma
 	else if(!data.depthOrRightCompressed().empty())
 	{
 		UERROR("Conversion of compressed SensorData to RGBDImage is not implemented...");
+	}
+
+	if(!data.labelsRaw().empty())
+	{
+		cv_bridge::CvImage cvLabels;
+		cvLabels.header = header;
+		cvLabels.image = data.labelsRaw();
+		cvLabels.encoding = sensor_msgs::image_encodings::MONO8;
+		cvLabels.toImageMsg(msg.labels);
 	}
 
 	//convert features
@@ -498,6 +516,7 @@ rtabmap::SensorData rgbdImageFromROS(const rtabmap_msgs::msg::RGBDImage::ConstSh
 				rtabmap_conversions::cameraModelFromROS(image->rgb_camera_info),
 				0,
 				rtabmap_conversions::timestampFromROS(image->header.stamp));
+		data.setLabels(labelsToCvShare(*image, image)->image);
 	}
 
 	return data;

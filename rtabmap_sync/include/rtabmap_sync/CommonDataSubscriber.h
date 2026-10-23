@@ -229,6 +229,9 @@ protected:
 	 *                             `convertRGBDMsgs()` is what moves them to the base
 	 *                             frame, applying each camera's local transform.
 	 * @param localDescriptors     per-camera feature descriptors, already uncompressed
+	 * @param labelMsgs            per-camera semantic labels over the depth image, only
+	 *                             set by the RGBD inputs; an entry is empty when its
+	 *                             camera carries none
 	 */
 	virtual void commonMultiCameraCallback(
 				const nav_msgs::msg::Odometry::ConstSharedPtr & odomMsg,
@@ -243,7 +246,8 @@ protected:
 				const std::vector<rtabmap_msgs::msg::GlobalDescriptor> & globalDescriptorMsgs = std::vector<rtabmap_msgs::msg::GlobalDescriptor>(),
 				const std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> > & localKeyPoints = std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> >(),
 				const std::vector<std::vector<rtabmap_msgs::msg::Point3f> > & localPoints3d = std::vector<std::vector<rtabmap_msgs::msg::Point3f> >(),
-				const std::vector<cv::Mat> & localDescriptors = std::vector<cv::Mat>()) = 0;
+				const std::vector<cv::Mat> & localDescriptors = std::vector<cv::Mat>(),
+				const std::vector<cv_bridge::CvImageConstPtr> & labelMsgs = std::vector<cv_bridge::CvImageConstPtr>()) = 0;
 	/**
 	 * @brief Called with one synchronized scan, when no camera is subscribed.
 	 *
@@ -314,7 +318,8 @@ private:
 			const std::vector<rtabmap_msgs::msg::GlobalDescriptor> & globalDescriptorMsgs = std::vector<rtabmap_msgs::msg::GlobalDescriptor>(),
 			const std::vector<rtabmap_msgs::msg::KeyPoint> & localKeyPoints = std::vector<rtabmap_msgs::msg::KeyPoint>(),
 			const std::vector<rtabmap_msgs::msg::Point3f> & localPoints3d = std::vector<rtabmap_msgs::msg::Point3f>(),
-			const cv::Mat & localDescriptors = cv::Mat());
+			const cv::Mat & localDescriptors = cv::Mat(),
+			const cv_bridge::CvImageConstPtr & labelMsg = cv_bridge::CvImageConstPtr());
 	void processSyncData();
 	void setupDepthCallbacks(
 			rclcpp::Node & node,

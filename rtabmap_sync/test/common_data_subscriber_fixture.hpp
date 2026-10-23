@@ -82,7 +82,8 @@ protected:
 			const std::vector<rtabmap_msgs::msg::GlobalDescriptor> & globalDescriptorMsgs,
 			const std::vector<std::vector<rtabmap_msgs::msg::KeyPoint> > &,
 			const std::vector<std::vector<rtabmap_msgs::msg::Point3f> > &,
-			const std::vector<cv::Mat> &) override
+			const std::vector<cv::Mat> &,
+			const std::vector<cv_bridge::CvImageConstPtr> &) override
 	{
 		(void)depthCameraInfoMsgs;
 		Record record;
