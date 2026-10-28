@@ -1731,7 +1731,8 @@ void CoreWrapper::commonMultiCameraCallbackImpl(
 		bool valid = labels.size() == labelMsgs.size();
 		for(const cv::Mat & cameraLabels : labels)
 		{
-			valid = valid && cameraLabels.type() == CV_8UC1 && cameraLabels.size() == cameraDepthSize;
+			valid = valid && (cameraLabels.type() == CV_8UC1 || cameraLabels.type() == CV_8UC2) &&
+					cameraLabels.type() == labels.front().type() && cameraLabels.size() == cameraDepthSize;
 		}
 		if(valid)
 		{
@@ -1741,7 +1742,7 @@ void CoreWrapper::commonMultiCameraCallbackImpl(
 		}
 		else
 		{
-			RCLCPP_WARN(this->get_logger(), "Labels ignored: every camera needs mono8 labels of its depth image's size "
+			RCLCPP_WARN(this->get_logger(), "Labels ignored: every camera needs labels of one type, mono8 or 8UC2, and of its depth image's size "
 					"(%dx%d; got labels for %ld of %ld cameras).",
 					cameraDepthSize.width, cameraDepthSize.height, labels.size(), labelMsgs.size());
 		}

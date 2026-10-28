@@ -11,7 +11,8 @@ sensor_msgs/CameraInfo depth_camera_info
 sensor_msgs/Image rgb
 sensor_msgs/Image depth
 
-# Optional per-pixel semantic labels (mono8), same size as depth
+# Optional per-pixel semantic labels, same size as depth: mono8, or 8UC2 whose
+# second channel holds object labels
 sensor_msgs/Image labels
 
 # Compressed

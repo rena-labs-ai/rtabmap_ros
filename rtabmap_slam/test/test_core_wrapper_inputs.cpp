@@ -433,6 +433,71 @@ TEST_F(CoreWrapperInputsTest, maps_an_rgbd_image)
 }
 
 /**
+ * Object labels ride as the second channel of an RGB-D image's labels, as rgbd_sync packs
+ * them: the nodes' object cells are object_map, on map's cells -- the object's label where
+ * it lies, 0 on the floor seen around it, -1 where the camera never looked.
+ */
+TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
+{
+	// A level camera 0.3 m up sees the floor below its horizon, a row per ~3 cm at 1 m;
+	// an object labelled 3 lies flat on it in the middle columns, under 4 cm wide at 1 m.
+	const int width = 256, height = 192;
+	const double fx = 128.0;
+	cv::Mat depth(height, width, CV_32FC1, cv::Scalar(0.0f));
+	for(int v=height/2+1; v<height; ++v)
+	{
+		depth.row(v).setTo(cv::Scalar(0.3 * fx / double(v - height/2)));
+	}
+	cv::Mat objects(height, width, CV_8UC1, cv::Scalar(0));
+	objects.colRange(width/2-2, width/2+2).setTo(cv::Scalar(3));
+	cv::Mat labels;
+	cv::merge(std::vector<cv::Mat>{cv::Mat::zeros(height, width, CV_8UC1), objects}, labels);
+
+	publishOpticalTf("camera_optical", 0.3);
+	makeNode({rclcpp::Parameter("subscribe_rgbd", true),
+			  rclcpp::Parameter("RGBD/CreateOccupancyGrid", "true"),
+			  rclcpp::Parameter("Grid/RangeMax", "2.0"),
+			  rclcpp::Parameter("Grid/CellSize", "0.05"),
+			  rclcpp::Parameter("Grid/NormalsSegmentation", "false"),
+			  rclcpp::Parameter("Grid/MaxGroundHeight", "0.05")});
+	std::shared_ptr<Collector<nav_msgs::msg::OccupancyGrid>> objectMap =
+			collect<nav_msgs::msg::OccupancyGrid>("object_map", rclcpp::QoS(1).reliable().transient_local());
+	std::shared_ptr<Collector<nav_msgs::msg::OccupancyGrid>> grid =
+			collect<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(1).reliable().transient_local());
+	std::shared_ptr<Collector<rtabmap_msgs::msg::Info>> info = collectInfo();
+	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom = odomPublisher();
+	rclcpp::Publisher<rtabmap_msgs::msg::RGBDImage>::SharedPtr rgbd =
+			helper()->create_publisher<rtabmap_msgs::msg::RGBDImage>("rgbd_image", 10);
+	ASSERT_TRUE(waitForSubscriber(rgbd));
+	ASSERT_TRUE(waitForPublisher(objectMap->subscription));
+	ASSERT_TRUE(waitForPublisher(grid->subscription));
+
+	rtabmap_msgs::msg::RGBDImage msg;
+	msg.header.frame_id = "camera_optical";
+	msg.header.stamp = stampOf(1.0);
+	msg.rgb = makeTexturedImage("camera_optical", 1.0, width, height);
+	msg.depth = makeImage("camera_optical", 1.0, depth, "32FC1");
+	msg.labels = makeImage("camera_optical", 1.0, labels, "8UC2");
+	msg.rgb_camera_info = makeCameraInfo("camera_optical", 1.0, width, height, fx);
+	msg.depth_camera_info = msg.rgb_camera_info;
+	sendOdom(odom, 1.0, 0.0);
+	rgbd->publish(msg);
+	ASSERT_TRUE(spinUntil([&]() { return !info->empty() && !objectMap->empty() && !grid->empty(); }));
+
+	const nav_msgs::msg::OccupancyGrid & objectsGrid = objectMap->back();
+	const nav_msgs::msg::OccupancyGrid & map = grid->back();
+	EXPECT_EQ("map", objectsGrid.header.frame_id);
+	EXPECT_EQ(map.info.width, objectsGrid.info.width) << "on map's cells";
+	EXPECT_EQ(map.info.height, objectsGrid.info.height);
+	EXPECT_FLOAT_EQ(map.info.resolution, objectsGrid.info.resolution);
+	EXPECT_DOUBLE_EQ(map.info.origin.position.x, objectsGrid.info.origin.position.x);
+	EXPECT_DOUBLE_EQ(map.info.origin.position.y, objectsGrid.info.origin.position.y);
+	EXPECT_EQ(3, occupancyAround(objectsGrid, 1.0, 0.0)) << "the object";
+	EXPECT_EQ(0, occupancyAround(objectsGrid, 1.0, 0.5)) << "the floor beside it";
+	EXPECT_EQ(-1, occupancyAt(objectsGrid, -0.5, 0.0)) << "behind the camera";
+}
+
+/**
  * gen_scan makes a 2D scan out of the depth image, for a robot with a depth camera and no
  * lidar, so the grid can be built the way it would be from a lidar. Given the depth image
  * of a known scan, the scan it makes is that scan: every point of it within 1 cm of the
