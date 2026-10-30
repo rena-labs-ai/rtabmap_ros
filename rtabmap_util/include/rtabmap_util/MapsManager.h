@@ -261,7 +261,6 @@ private:
 	/// map/channels: the grid map with every label grid on its cells (see publishChannels()).
 	rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr channelsPub_;
 #endif
-	std::string labelChannel_ = "labels"; ///< the label grid's channel name (label_map parameter)
 	std::map<int, double> nodeStamps_; ///< stamps of the nodes the channels' ages refer to
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridProbMapPub_;
 #ifdef RTABMAP_OCTOMAP
@@ -295,17 +294,8 @@ private:
 	rtabmap::LocalGridMaker * localMapMaker_;
 	bool gridUpdated_;
 
-	/// Nodes' label cells (rtabmap::SensorData::gridLabelCells()), assembled like the
-	/// grid map but apart from it: floor cells clear and obstacle cells mark.
-	rtabmap::LocalGridCache labelMaps_;
-	rtabmap::OccupancyGrid * labelGrid_;
-	bool labelGridUpdated_;
-	int labelObstacle_;
-	int labelFloor_;
-	void addLabelCells(int id, const rtabmap::SensorData & data);
-
-	/// One object channel of the labels: its nodes' object cells
-	/// (rtabmap::SensorData::gridObjectCells()), assembled into an rtabmap::ObjectGrid,
+	/// One labeler (Grid/Labelers): its labels in the nodes' label rasters
+	/// (rtabmap::SensorData::gridLabelRaster()), assembled into an rtabmap::ObjectGrid,
 	/// published as the channel <name> of map/channels.
 	struct ObjectMap
 	{
@@ -314,9 +304,9 @@ private:
 		std::unique_ptr<rtabmap::ObjectGrid> grid;
 		bool updated = false;
 	};
-	/// The object_maps parameter's names in order: the labels' channel i + 1 is objectMaps_[i].
+	/// Grid/Labelers' labelers in order: labeler i is objectMaps_[i].
 	std::vector<std::unique_ptr<ObjectMap> > objectMaps_;
-	void addObjectCells(int id, const rtabmap::SensorData & data);
+	void addLabels(int id, const rtabmap::SensorData & data);
 
 	void updateLabelGrids(
 			const std::map<int, rtabmap::Transform> & poses,

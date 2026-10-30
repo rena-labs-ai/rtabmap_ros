@@ -105,7 +105,7 @@ ComposableNode(
 | `rgb/image` | [`sensor_msgs/msg/Image`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html) | Color image. Goes through `image_transport`, so `rgb/image/compressed` is used instead when `image_transport` is set. |
 | `depth/image` | [`sensor_msgs/msg/Image`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html) | Depth image, registered to the color camera. `16UC1` in millimeters or `32FC1` in meters. Goes through `image_transport` under `depth_transport`. |
 | `rgb/camera_info` | [`sensor_msgs/msg/CameraInfo`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/CameraInfo.html) | Calibration of the color camera. Copied into both calibration slots of the output — depth is assumed registered. |
-| `labels/image` | [`sensor_msgs/msg/Image`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html) | Only with `subscribe_labels`: per-pixel semantic labels (8-bit, any channel count) over the depth image, synchronized with the three others and carried in the output's `labels`; labels whose stamp or size is not the depth frame's are dropped. rtabmap turns the first channel into the local grid's label cells (see `Grid/LabelObstacle`) and each later channel into object cells for its own object map (see `Grid/ObjectMaxHeight`). |
+| `labels/image` | [`sensor_msgs/msg/Image`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html) | Only with `subscribe_labels`: per-pixel semantic labels (8-bit, any channel count) over the depth image, synchronized with the three others and carried in the output's `labels`; labels whose stamp or size is not the depth frame's are dropped. Channel i is labeler i of `Grid/Labelers`; rtabmap packs every labeler's label per local grid cell into each node's label raster. |
 
 ## Published Topics
 

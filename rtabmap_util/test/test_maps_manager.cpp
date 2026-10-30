@@ -556,18 +556,22 @@ TEST_F(MapsManagerTest, PublishesTheGridAndWhenEachCellWasSeenAsChannels)
 	EXPECT_FLOAT_EQ(at("occupancy_age", 3.0, -0.1), 8.0f) << "node 2 (stamp 1002)'s obstacle";
 }
 
-TEST_F(MapsManagerTest, EachObjectMapIsAChannelWithItsAges)
+TEST_F(MapsManagerTest, EachLabelerIsAChannelWithItsAges)
 {
-	start({rclcpp::Parameter("object_maps", std::vector<std::string>{"things"})});
+	start({}, {{rtabmap::Parameters::kGridLabelers(), "floor:2 things:4"}});
 	std::shared_ptr<Collector<grid_map_msgs::msg::GridMap>> layers =
 			collectFromMaps<grid_map_msgs::msg::GridMap>("map/channels");
 
-	// The scene, its nodes each seeing a thing labelled 3 by its own pose's obstacle.
+	// The scene, its nodes each seeing, by its own pose's obstacle, a thing labelled 3 on
+	// what the floor labeler calls 1.
+	const rtabmap::LabelLayout labelers = rtabmap::LabelLayout::parse("floor:2 things:4");
 	std::map<int, rtabmap::Signature> signatures = scene();
 	for(std::pair<const int, rtabmap::Signature> & node : signatures)
 	{
-		cv::Mat cells(1, 1, CV_32FC4, cv::Scalar(0.5f, -0.1f, 1.0f, 3.0f));
-		node.second.sensorData().setGridObjectCells(cells);
+		rtabmap::LabelRaster raster(10, -2, 0.05f, 1, 1);  // the cell at (0.525, -0.075)
+		raster.set(labelers, 0, 0, 0, 1);
+		raster.set(labelers, 1, 0, 0, 3);
+		node.second.sensorData().setGridLabelRaster(raster);
 	}
 	const std::map<int, rtabmap::Transform> poses = posesOfScene();
 	maps_->updateMapCaches(poses, /*memory=*/0, true, false, signatures);
@@ -577,6 +581,7 @@ TEST_F(MapsManagerTest, EachObjectMapIsAChannelWithItsAges)
 	ASSERT_FALSE(layers->empty());
 	grid_map::GridMap map;
 	ASSERT_TRUE(grid_map::GridMapRosConverter::fromMessage(layers->back(), map));
+	ASSERT_TRUE(map.exists("floor"));
 	ASSERT_TRUE(map.exists("things"));
 	ASSERT_TRUE(map.exists("things_age"));
 	// The object grid's cells are whole cells from the world origin, the grid map's are
@@ -596,6 +601,7 @@ TEST_F(MapsManagerTest, EachObjectMapIsAChannelWithItsAges)
 		}
 		return std::numeric_limits<float>::quiet_NaN();
 	};
+	EXPECT_EQ(near("floor", 0.5, -0.1), 1.0f) << "node 1's floor labeler";
 	EXPECT_EQ(near("things", 0.5, -0.1), 3.0f) << "node 1's thing";
 	EXPECT_EQ(near("things", 2.5, -0.1), 3.0f) << "node 2's thing";
 	EXPECT_FLOAT_EQ(near("things_age", 0.5, -0.1), 9.0f) << "node 1 (stamp 1001)";

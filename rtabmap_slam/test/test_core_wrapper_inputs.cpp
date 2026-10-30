@@ -464,12 +464,12 @@ TEST_F(CoreWrapperInputsTest, maps_an_rgbd_image)
 }
 
 /**
- * Object labels ride as the channels after the first of an RGB-D image's labels, as rgbd_sync
- * forwards them: each channel's object cells are its own channel of map/channels (object_maps), on
- * map's cells -- the object's label where it lies, 0 on the floor seen around it, NaN where the
- * camera never looked.
+ * Labels ride as the channels of an RGB-D image's labels, as rgbd_sync forwards them, one per
+ * labeler of Grid/Labelers: each labeler is its own channel of map/channels, on map's cells --
+ * the object's label where it lies, 0 on the floor seen around it, NaN where the camera never
+ * looked.
  */
-TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
+TEST_F(CoreWrapperInputsTest, maps_each_labeler_on_the_grid_cells)
 {
 	// A level camera 0.3 m up sees the floor below its horizon, a row per ~3 cm at 1 m;
 	// an object labelled 3 lies flat on it in the middle columns, under 4 cm wide at 1 m.
@@ -494,7 +494,7 @@ TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 			  rclcpp::Parameter("Grid/CellSize", "0.05"),
 			  rclcpp::Parameter("Grid/NormalsSegmentation", "false"),
 			  rclcpp::Parameter("Grid/MaxGroundHeight", "0.05"),
-			  rclcpp::Parameter("object_maps", std::vector<std::string>{"first", "second"})});
+			  rclcpp::Parameter("Grid/Labelers", "floor:2 first:4 second:10")});
 	std::shared_ptr<Collector<grid_map_msgs::msg::GridMap>> layers =
 			collect<grid_map_msgs::msg::GridMap>("map/channels", rclcpp::QoS(1).reliable().transient_local());
 	std::shared_ptr<Collector<nav_msgs::msg::OccupancyGrid>> grid =
