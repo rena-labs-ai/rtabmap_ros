@@ -81,8 +81,6 @@ MapsManager::MapsManager() :
 		labelGridUpdated_(false),
 		labelObstacle_(Parameters::defaultGridLabelObstacle()),
 		labelFloor_(Parameters::defaultGridLabelFloor()),
-		objectGrid_(new ObjectGrid(&objectMaps_)),
-		objectGridUpdated_(false),
 #ifdef RTABMAP_OCTOMAP
 		octomap_(new OctoMap(&localMaps_)),
 #endif
@@ -156,8 +154,14 @@ void MapsManager::init(rclcpp::Node & node, const std::string & name, bool)
 	latched_.insert(std::make_pair((void*)&gridProbMapPub_, false));
 	labelMapPub_ = node.create_publisher<nav_msgs::msg::OccupancyGrid>("label_map", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
 	latched_.insert(std::make_pair((void*)&labelMapPub_, false));
-	objectMapPub_ = node.create_publisher<nav_msgs::msg::OccupancyGrid>("object_map", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
-	latched_.insert(std::make_pair((void*)&objectMapPub_, false));
+	for(const std::string & name : node.declare_parameter("object_maps", std::vector<std::string>()))
+	{
+		std::unique_ptr<ObjectMap> objectMap(new ObjectMap);
+		objectMap->pub = node.create_publisher<nav_msgs::msg::OccupancyGrid>("object_map/" + name, rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
+		objectMap->grid.reset(new ObjectGrid(&objectMap->cache));
+		latched_.insert(std::make_pair((void*)&objectMap->pub, false));
+		objectMaps_.push_back(std::move(objectMap));
+	}
 	cloudMapPub_ = node.create_publisher<sensor_msgs::msg::PointCloud2>("cloud_map", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
 	latched_.insert(std::make_pair((void*)&cloudMapPub_, false));
 	cloudObstaclesPub_ = node.create_publisher<sensor_msgs::msg::PointCloud2>("cloud_obstacles", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
@@ -198,7 +202,6 @@ MapsManager::~MapsManager() {
 	delete occupancyGrid_;
 	delete localMapMaker_;
 	delete labelGrid_;
-	delete objectGrid_;
 
 #ifdef RTABMAP_OCTOMAP
 	delete octomap_;
@@ -279,8 +282,10 @@ void MapsManager::setParameters(const rtabmap::ParametersMap & parameters)
 	labelGrid_ = new OccupancyGrid(&labelMaps_, parameters_);
 	Parameters::parse(parameters_, Parameters::kGridLabelObstacle(), labelObstacle_);
 	Parameters::parse(parameters_, Parameters::kGridLabelFloor(), labelFloor_);
-	delete objectGrid_;
-	objectGrid_ = new ObjectGrid(&objectMaps_, parameters_);
+	for(std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
+	{
+		objectMap->grid.reset(new ObjectGrid(&objectMap->cache, parameters_));
+	}
 
 #ifdef RTABMAP_OCTOMAP
 	delete octomap_;
@@ -356,8 +361,11 @@ void MapsManager::clear()
 	occupancyGrid_->clear();
 	labelMaps_.clear();
 	labelGrid_->clear();
-	objectMaps_.clear();
-	objectGrid_->clear();
+	for(std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
+	{
+		objectMap->cache.clear();
+		objectMap->grid->clear();
+	}
 
 #ifdef RTABMAP_OCTOMAP
 	octomap_->clear();
@@ -381,7 +389,7 @@ bool MapsManager::hasSubscribers() const
 			gridMapPub_->get_subscription_count() != 0 ||
 			gridProbMapPub_->get_subscription_count() != 0 ||
 			labelMapPub_->get_subscription_count() != 0 ||
-			objectMapPub_->get_subscription_count() != 0
+			objectMapSubscribers()
 #ifdef RTABMAP_OCTOMAP
 			||
 #ifdef WITH_OCTOMAP_MSGS
@@ -456,7 +464,7 @@ std::map<int, rtabmap::Transform> MapsManager::updateMapCaches(
 		updateGrid = gridMapPub_->get_subscription_count() != 0 ||
 				gridProbMapPub_->get_subscription_count() != 0 ||
 				labelMapPub_->get_subscription_count() != 0 ||
-				objectMapPub_->get_subscription_count() != 0;
+				objectMapSubscribers();
 
 		updateGridCache = updateOctomap || updateGrid || updateElevation ||
 				cloudMapPub_->get_subscription_count() != 0 ||
@@ -721,7 +729,10 @@ std::map<int, rtabmap::Transform> MapsManager::updateMapCaches(
 
 		localMaps_.clear(true);
 		labelMaps_.clear(true);
-		objectMaps_.clear(true);
+		for(std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
+		{
+			objectMap->cache.clear(true);
+		}
 
 
 		for(std::map<int, pcl::PointCloud<pcl::PointXYZRGB>::Ptr >::iterator iter=groundClouds_.begin();
@@ -1489,14 +1500,17 @@ void MapsManager::publishMaps(
 		latched_.at(&labelMapPub_) = false;
 	}
 
-	if( objectMapPub_->get_subscription_count() &&
-		(gridUpdated_ || objectGridUpdated_ || !latching_ || !latched_.at(&objectMapPub_)))
+	for(std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
 	{
-		publishObjectMap(stamp, mapFrameId);
-	}
-	if(objectMapPub_->get_subscription_count() == 0)
-	{
-		latched_.at(&objectMapPub_) = false;
+		if( objectMap->pub->get_subscription_count() &&
+			(gridUpdated_ || objectMap->updated || !latching_ || !latched_.at(&objectMap->pub)))
+		{
+			publishObjectMap(*objectMap, stamp, mapFrameId);
+		}
+		if(objectMap->pub->get_subscription_count() == 0)
+		{
+			latched_.at(&objectMap->pub) = false;
+		}
 	}
 
 	if(gridMapPub_->get_subscription_count() == 0)
@@ -1550,12 +1564,12 @@ void MapsManager::updateLabelGrids(
 		const std::map<int, rtabmap::Signature> & signatures)
 {
 	const bool labels = labelMapPub_->get_subscription_count() != 0 && labelObstacle_ != 0 && labelFloor_ != 0;
-	const bool objects = objectMapPub_->get_subscription_count() != 0;
+	const bool objects = objectMapSubscribers();
 	for(const std::pair<const int, rtabmap::Transform> & pose : poses)
 	{
 		const int id = pose.first;
 		const bool addLabels = labels && (id <= 0 || !uContains(labelMaps_.localGrids(), id));
-		const bool addObjects = objects && (id <= 0 || !uContains(objectMaps_.localGrids(), id));
+		const bool addObjects = objects && (id <= 0 || !uContains(objectMaps_.front()->cache.localGrids(), id));
 		if(!addLabels && !addObjects)
 		{
 			continue;
@@ -1580,7 +1594,10 @@ void MapsManager::updateLabelGrids(
 		}
 	}
 	labelGridUpdated_ = labels && labelGrid_->update(poses);
-	objectGridUpdated_ = objects && objectGrid_->update(poses);
+	for(std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
+	{
+		objectMap->updated = objects && objectMap->grid->update(poses);
+	}
 }
 
 void MapsManager::addLabelCells(int id, const rtabmap::SensorData & data)
@@ -1611,6 +1628,18 @@ void MapsManager::addLabelCells(int id, const rtabmap::SensorData & data)
 			labelGrid_->getCellSize());
 }
 
+bool MapsManager::objectMapSubscribers() const
+{
+	for(const std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
+	{
+		if(objectMap->pub->get_subscription_count() != 0)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 void MapsManager::addObjectCells(int id, const rtabmap::SensorData & data)
 {
 	cv::Mat cells = data.gridObjectCells();
@@ -1618,26 +1647,35 @@ void MapsManager::addObjectCells(int id, const rtabmap::SensorData & data)
 	{
 		cells = localMapMaker_->createObjectCells(data);
 	}
-	std::vector<cv::Vec2f> floor;
-	std::vector<cv::Vec3f> objects;
+	// Per object map (channel - 1): floor seen with no object, and the objects.
+	std::vector<std::vector<cv::Vec2f> > floor(objectMaps_.size());
+	std::vector<std::vector<cv::Vec3f> > objects(objectMaps_.size());
 	for(int i=0; i<cells.cols; ++i)
 	{
-		const cv::Vec3f & cell = cells.at<cv::Vec3f>(0, i);
-		if(cell[2] == 0.0f)
+		const cv::Vec4f & cell = cells.at<cv::Vec4f>(0, i);
+		const size_t index = size_t(cell[2]) - 1;
+		if(index >= objectMaps_.size())
 		{
-			floor.push_back(cv::Vec2f(cell[0], cell[1]));
 			continue;
 		}
-		objects.push_back(cell);
+		if(cell[3] == 0.0f)
+		{
+			floor[index].push_back(cv::Vec2f(cell[0], cell[1]));
+			continue;
+		}
+		objects[index].push_back(cv::Vec3f(cell[0], cell[1], cell[3]));
 	}
-	objectMaps_.add(id,
-			floor.empty() ? cv::Mat() : cv::Mat(floor, true).reshape(2, 1),
-			objects.empty() ? cv::Mat() : cv::Mat(objects, true).reshape(3, 1),
-			cv::Mat(),
-			objectGrid_->getCellSize());
+	for(size_t i=0; i<objectMaps_.size(); ++i)
+	{
+		objectMaps_[i]->cache.add(id,
+				floor[i].empty() ? cv::Mat() : cv::Mat(floor[i], true).reshape(2, 1),
+				objects[i].empty() ? cv::Mat() : cv::Mat(objects[i], true).reshape(3, 1),
+				cv::Mat(),
+				objectMaps_[i]->grid->getCellSize());
+	}
 }
 
-void MapsManager::publishObjectMap(const rclcpp::Time & stamp, const std::string & mapFrameId)
+void MapsManager::publishObjectMap(ObjectMap & objectMap, const rclcpp::Time & stamp, const std::string & mapFrameId)
 {
 	float xMin=0.0f, yMin=0.0f, gridCellSize = 0.05f;
 	const cv::Mat grid = this->getGridMap(xMin, yMin, gridCellSize);
@@ -1647,7 +1685,7 @@ void MapsManager::publishObjectMap(const rclcpp::Time & stamp, const std::string
 	}
 	// On the grid map's cells: the same size, the origins rounded to whole cells apart.
 	float objectXMin=0.0f, objectYMin=0.0f;
-	const cv::Mat objects = objectGrid_->getMap(objectXMin, objectYMin);
+	const cv::Mat objects = objectMap.grid->getMap(objectXMin, objectYMin);
 	const cv::Point offset((int)std::round((objectXMin - xMin) / gridCellSize), (int)std::round((objectYMin - yMin) / gridCellSize));
 	const cv::Rect overlap = cv::Rect(offset, objects.size()) & cv::Rect(cv::Point(), grid.size());
 	cv::Mat pixels(grid.size(), CV_8SC1, cv::Scalar(-1));
@@ -1667,8 +1705,8 @@ void MapsManager::publishObjectMap(const rclcpp::Time & stamp, const std::string
 	memcpy(map.data.data(), pixels.data, map.info.width * map.info.height);
 	map.header.frame_id = mapFrameId;
 	map.header.stamp = stamp;
-	objectMapPub_->publish(map);
-	latched_.at(&objectMapPub_) = true;
+	objectMap.pub->publish(map);
+	latched_.at(&objectMap.pub) = true;
 }
 
 cv::Mat MapsManager::getGridMap(

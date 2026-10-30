@@ -433,9 +433,10 @@ TEST_F(CoreWrapperInputsTest, maps_an_rgbd_image)
 }
 
 /**
- * Object labels ride as the second channel of an RGB-D image's labels, as rgbd_sync packs
- * them: the nodes' object cells are object_map, on map's cells -- the object's label where
- * it lies, 0 on the floor seen around it, -1 where the camera never looked.
+ * Object labels ride as the channels after the first of an RGB-D image's labels, as rgbd_sync
+ * forwards them: each channel's object cells are its own object map (object_maps), on map's
+ * cells -- the object's label where it lies, 0 on the floor seen around it, -1 where the
+ * camera never looked.
  */
 TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 {
@@ -451,7 +452,9 @@ TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 	cv::Mat objects(height, width, CV_8UC1, cv::Scalar(0));
 	objects.colRange(width/2-2, width/2+2).setTo(cv::Scalar(3));
 	cv::Mat labels;
-	cv::merge(std::vector<cv::Mat>{cv::Mat::zeros(height, width, CV_8UC1), objects}, labels);
+	cv::Mat others(height, width, CV_8UC1, cv::Scalar(0));
+	others.colRange(width/2-2, width/2+2).setTo(cv::Scalar(6));
+	cv::merge(std::vector<cv::Mat>{cv::Mat::zeros(height, width, CV_8UC1), objects, others}, labels);
 
 	publishOpticalTf("camera_optical", 0.3);
 	makeNode({rclcpp::Parameter("subscribe_rgbd", true),
@@ -459,9 +462,12 @@ TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 			  rclcpp::Parameter("Grid/RangeMax", "2.0"),
 			  rclcpp::Parameter("Grid/CellSize", "0.05"),
 			  rclcpp::Parameter("Grid/NormalsSegmentation", "false"),
-			  rclcpp::Parameter("Grid/MaxGroundHeight", "0.05")});
+			  rclcpp::Parameter("Grid/MaxGroundHeight", "0.05"),
+			  rclcpp::Parameter("object_maps", std::vector<std::string>{"first", "second"})});
 	std::shared_ptr<Collector<nav_msgs::msg::OccupancyGrid>> objectMap =
-			collect<nav_msgs::msg::OccupancyGrid>("object_map", rclcpp::QoS(1).reliable().transient_local());
+			collect<nav_msgs::msg::OccupancyGrid>("object_map/first", rclcpp::QoS(1).reliable().transient_local());
+	std::shared_ptr<Collector<nav_msgs::msg::OccupancyGrid>> secondMap =
+			collect<nav_msgs::msg::OccupancyGrid>("object_map/second", rclcpp::QoS(1).reliable().transient_local());
 	std::shared_ptr<Collector<nav_msgs::msg::OccupancyGrid>> grid =
 			collect<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(1).reliable().transient_local());
 	std::shared_ptr<Collector<rtabmap_msgs::msg::Info>> info = collectInfo();
@@ -470,6 +476,7 @@ TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 			helper()->create_publisher<rtabmap_msgs::msg::RGBDImage>("rgbd_image", 10);
 	ASSERT_TRUE(waitForSubscriber(rgbd));
 	ASSERT_TRUE(waitForPublisher(objectMap->subscription));
+	ASSERT_TRUE(waitForPublisher(secondMap->subscription));
 	ASSERT_TRUE(waitForPublisher(grid->subscription));
 
 	rtabmap_msgs::msg::RGBDImage msg;
@@ -477,12 +484,12 @@ TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 	msg.header.stamp = stampOf(1.0);
 	msg.rgb = makeTexturedImage("camera_optical", 1.0, width, height);
 	msg.depth = makeImage("camera_optical", 1.0, depth, "32FC1");
-	msg.labels = makeImage("camera_optical", 1.0, labels, "8UC2");
+	msg.labels = makeImage("camera_optical", 1.0, labels, "8UC3");
 	msg.rgb_camera_info = makeCameraInfo("camera_optical", 1.0, width, height, fx);
 	msg.depth_camera_info = msg.rgb_camera_info;
 	sendOdom(odom, 1.0, 0.0);
 	rgbd->publish(msg);
-	ASSERT_TRUE(spinUntil([&]() { return !info->empty() && !objectMap->empty() && !grid->empty(); }));
+	ASSERT_TRUE(spinUntil([&]() { return !info->empty() && !objectMap->empty() && !secondMap->empty() && !grid->empty(); }));
 
 	const nav_msgs::msg::OccupancyGrid & objectsGrid = objectMap->back();
 	const nav_msgs::msg::OccupancyGrid & map = grid->back();
@@ -495,6 +502,8 @@ TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 	EXPECT_EQ(3, occupancyAround(objectsGrid, 1.0, 0.0)) << "the object";
 	EXPECT_EQ(0, occupancyAround(objectsGrid, 1.0, 0.5)) << "the floor beside it";
 	EXPECT_EQ(-1, occupancyAt(objectsGrid, -0.5, 0.0)) << "behind the camera";
+	EXPECT_EQ(6, occupancyAround(secondMap->back(), 1.0, 0.0)) << "the second channel's own map";
+	EXPECT_EQ(0, occupancyAround(secondMap->back(), 1.0, 0.5));
 }
 
 /**

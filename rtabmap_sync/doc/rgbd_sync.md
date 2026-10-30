@@ -105,8 +105,7 @@ ComposableNode(
 | `rgb/image` | [`sensor_msgs/msg/Image`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html) | Color image. Goes through `image_transport`, so `rgb/image/compressed` is used instead when `image_transport` is set. |
 | `depth/image` | [`sensor_msgs/msg/Image`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html) | Depth image, registered to the color camera. `16UC1` in millimeters or `32FC1` in meters. Goes through `image_transport` under `depth_transport`. |
 | `rgb/camera_info` | [`sensor_msgs/msg/CameraInfo`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/CameraInfo.html) | Calibration of the color camera. Copied into both calibration slots of the output — depth is assumed registered. |
-| `labels/image` | [`sensor_msgs/msg/Image`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html) | Only with `subscribe_labels`: per-pixel semantic labels (`mono8`) over the depth image, synchronized with the three others and carried in the output's `labels`; labels whose stamp is not the depth frame's are dropped. rtabmap turns them into the local grid's label cells, see `Grid/LabelObstacle`. |
-| `object_labels/image` | [`sensor_msgs/msg/Image`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html) | Only with `subscribe_object_labels`: per-pixel object labels (`mono8`, 0 no object) over the depth image, synchronized like `labels/image` and carried as the second channel of the output's `labels` (`8UC2`). rtabmap turns them into the local grid's object cells, see `Grid/ObjectMaxHeight`. |
+| `labels/image` | [`sensor_msgs/msg/Image`](https://docs.ros.org/en/jazzy/p/sensor_msgs/msg/Image.html) | Only with `subscribe_labels`: per-pixel semantic labels (8-bit, any channel count) over the depth image, synchronized with the three others and carried in the output's `labels`; labels whose stamp or size is not the depth frame's are dropped. rtabmap turns the first channel into the local grid's label cells (see `Grid/LabelObstacle`) and each later channel into object cells for its own object map (see `Grid/ObjectMaxHeight`). |
 
 ## Published Topics
 
@@ -138,7 +137,6 @@ The output's `header.stamp` is the **later** of the color and depth stamps, so t
 | `rgb_image_transport` | `string` | — | **Deprecated**, renamed to `image_transport`. |
 | `depth_image_transport` | `string` | — | **Deprecated**, renamed to `depth_transport`. |
 | `subscribe_labels` | `bool` | `false` | Also synchronize `labels/image`; only frames that have labels are published. |
-| `subscribe_object_labels` | `bool` | `false` | Also synchronize `object_labels/image`, and `labels/image` with it. |
 
 ## Synchronization
 

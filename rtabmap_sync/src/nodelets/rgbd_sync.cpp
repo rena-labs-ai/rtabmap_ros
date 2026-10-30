@@ -56,9 +56,7 @@ RGBDSync::RGBDSync(const rclcpp::NodeOptions & options) :
 	approxSyncDepth_(0),
 	exactSyncDepth_(0),
 	approxSyncLabels_(0),
-	exactSyncLabels_(0),
-	approxSyncObjectLabels_(0),
-	exactSyncObjectLabels_(0)
+	exactSyncLabels_(0)
 {
 	int topicQueueSize = 10;
 	int syncQueueSize = 10;
@@ -99,8 +97,6 @@ RGBDSync::RGBDSync(const rclcpp::NodeOptions & options) :
 	std::string imageTransport = this->declare_parameter("image_transport", rgbImageTransport);
 	std::string depthTransport = this->declare_parameter("depth_transport", depthImageTransport);
 	bool subscribeLabels = this->declare_parameter("subscribe_labels", false);
-	bool subscribeObjectLabels = this->declare_parameter("subscribe_object_labels", false);
-	subscribeLabels = subscribeLabels || subscribeObjectLabels;
 
 	if(decimation_<1)
 	{
@@ -120,24 +116,11 @@ RGBDSync::RGBDSync(const rclcpp::NodeOptions & options) :
 	RCLCPP_INFO(this->get_logger(), "%s: image_transport = %s", get_name(), imageTransport.c_str());
 	RCLCPP_INFO(this->get_logger(), "%s: depth_transport = %s", get_name(), depthTransport.c_str());
 	RCLCPP_INFO(this->get_logger(), "%s: subscribe_labels = %s", get_name(), subscribeLabels?"true":"false");
-	RCLCPP_INFO(this->get_logger(), "%s: subscribe_object_labels = %s", get_name(), subscribeObjectLabels?"true":"false");
 
 	rgbdImagePub_ = this->create_publisher<rtabmap_msgs::msg::RGBDImage>("rgbd_image", rclcpp::QoS(1).reliability((rmw_qos_reliability_policy_t)qos));
 	rgbdImageCompressedPub_ = this->create_publisher<rtabmap_msgs::msg::RGBDImage>("rgbd_image/compressed", rclcpp::QoS(1).reliability((rmw_qos_reliability_policy_t)qos));
 
-	if(subscribeObjectLabels && approxSync)
-	{
-		approxSyncObjectLabels_ = new message_filters::Synchronizer<MyApproxSyncObjectLabelsPolicy>(MyApproxSyncObjectLabelsPolicy(syncQueueSize), imageSub_, imageDepthSub_, cameraInfoSub_, labelsSub_, objectLabelsSub_);
-		if(approxSyncMaxInterval_ > 0.0)
-			approxSyncObjectLabels_->setMaxIntervalDuration(rclcpp::Duration::from_seconds(approxSyncMaxInterval_));
-		approxSyncObjectLabels_->registerCallback(std::bind(&RGBDSync::objectLabelsCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
-	}
-	else if(subscribeObjectLabels)
-	{
-		exactSyncObjectLabels_ = new message_filters::Synchronizer<MyExactSyncObjectLabelsPolicy>(MyExactSyncObjectLabelsPolicy(syncQueueSize), imageSub_, imageDepthSub_, cameraInfoSub_, labelsSub_, objectLabelsSub_);
-		exactSyncObjectLabels_->registerCallback(std::bind(&RGBDSync::objectLabelsCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
-	}
-	else if(subscribeLabels && approxSync)
+	if(subscribeLabels && approxSync)
 	{
 		approxSyncLabels_ = new message_filters::Synchronizer<MyApproxSyncLabelsPolicy>(MyApproxSyncLabelsPolicy(syncQueueSize), imageSub_, imageDepthSub_, cameraInfoSub_, labelsSub_);
 		if(approxSyncMaxInterval_ > 0.0)
@@ -180,20 +163,15 @@ RGBDSync::RGBDSync(const rclcpp::NodeOptions & options) :
 	{
 		labelsSub_.subscribe(this, "labels/image", RCLCPP_QOS(topicQueueSize, qos));
 	}
-	if(subscribeObjectLabels)
-	{
-		objectLabelsSub_.subscribe(this, "object_labels/image", RCLCPP_QOS(topicQueueSize, qos));
-	}
 
-	std::string subscribedTopicsMsg = uFormat("\n%s subscribed to (%s sync%s):\n   %s,\n   %s,\n   %s%s%s",
+	std::string subscribedTopicsMsg = uFormat("\n%s subscribed to (%s sync%s):\n   %s,\n   %s,\n   %s%s",
 						get_name(),
 						approxSync?"approx":"exact",
 						approxSync&&approxSyncMaxInterval_!=0.0?uFormat(", max interval=%fs", approxSyncMaxInterval_).c_str():"",
 						imageSub_.getSubscriber().getTopic().c_str(),
 						imageDepthSub_.getSubscriber().getTopic().c_str(),
 						cameraInfoSub_.getSubscriber()->get_topic_name(),
-						subscribeLabels?uFormat(",\n   %s", labelsSub_.getSubscriber()->get_topic_name()).c_str():"",
-						subscribeObjectLabels?uFormat(",\n   %s", objectLabelsSub_.getSubscriber()->get_topic_name()).c_str():"");
+						subscribeLabels?uFormat(",\n   %s", labelsSub_.getSubscriber()->get_topic_name()).c_str():"");
 
 	RCLCPP_INFO(this->get_logger(), "%s", subscribedTopicsMsg.c_str());
 
@@ -217,8 +195,6 @@ RGBDSync::~RGBDSync()
 	delete exactSyncDepth_;
 	delete approxSyncLabels_;
 	delete exactSyncLabels_;
-	delete approxSyncObjectLabels_;
-	delete exactSyncObjectLabels_;
 }
 
 void RGBDSync::callback(
@@ -226,7 +202,7 @@ void RGBDSync::callback(
 		  const sensor_msgs::msg::Image::ConstSharedPtr depth,
 		  const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo)
 {
-	publish(image, depth, cameraInfo, {});
+	publish(image, depth, cameraInfo, nullptr);
 }
 
 void RGBDSync::labelsCallback(
@@ -235,46 +211,30 @@ void RGBDSync::labelsCallback(
 		  const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo,
 		  const sensor_msgs::msg::Image::ConstSharedPtr labels)
 {
-	publish(image, depth, cameraInfo, {labels});
-}
-
-void RGBDSync::objectLabelsCallback(
-		  const sensor_msgs::msg::Image::ConstSharedPtr image,
-		  const sensor_msgs::msg::Image::ConstSharedPtr depth,
-		  const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo,
-		  const sensor_msgs::msg::Image::ConstSharedPtr labels,
-		  const sensor_msgs::msg::Image::ConstSharedPtr objectLabels)
-{
-	publish(image, depth, cameraInfo, {labels, objectLabels});
+	publish(image, depth, cameraInfo, labels);
 }
 
 sensor_msgs::msg::Image RGBDSync::forwardedLabels(
-		const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & labels,
+		const sensor_msgs::msg::Image::ConstSharedPtr labels,
 		const sensor_msgs::msg::Image & depth,
 		const cv::Size & size) const
 {
-	std::vector<cv::Mat> channels;
-	for(const sensor_msgs::msg::Image::ConstSharedPtr & image : labels)
-	{
-		const cv::Mat channel = cv_bridge::toCvShare(image)->image;
-		if(rclcpp::Time(image->header.stamp) != rclcpp::Time(depth.header.stamp) ||
-		   channel.type() != CV_8UC1 || channel.size() != cv::Size(depth.width, depth.height))
-		{
-			RCLCPP_WARN(this->get_logger(), "Labels (stamp=%f, type=%d, %dx%d) must be mono8 of the depth frame's "
-				"stamp (%f) and size (%dx%d), none are forwarded.", rtabmap_conversions::timestampFromROS(image->header.stamp),
-				channel.type(), channel.cols, channel.rows, rtabmap_conversions::timestampFromROS(depth.header.stamp), depth.width, depth.height);
-			return sensor_msgs::msg::Image();
-		}
-		channels.push_back(channel);
-	}
-	if(channels.empty())
+	if(!labels)
 	{
 		return sensor_msgs::msg::Image();
 	}
 	cv_bridge::CvImage cvLabels;
-	cvLabels.header = labels.front()->header;
-	cvLabels.encoding = channels.size() == 1 ? sensor_msgs::image_encodings::MONO8 : sensor_msgs::image_encodings::TYPE_8UC2;
-	cv::merge(channels, cvLabels.image);
+	cvLabels.header = labels->header;
+	cvLabels.encoding = labels->encoding;
+	cvLabels.image = cv_bridge::toCvShare(labels)->image;
+	if(rclcpp::Time(labels->header.stamp) != rclcpp::Time(depth.header.stamp) ||
+	   cvLabels.image.depth() != CV_8U || cvLabels.image.size() != cv::Size(depth.width, depth.height))
+	{
+		RCLCPP_WARN(this->get_logger(), "Labels (stamp=%f, type=%d, %dx%d) must be 8-bit, of the depth frame's "
+			"stamp (%f) and size (%dx%d), they are not forwarded.", rtabmap_conversions::timestampFromROS(labels->header.stamp),
+			cvLabels.image.type(), cvLabels.image.cols, cvLabels.image.rows, rtabmap_conversions::timestampFromROS(depth.header.stamp), depth.width, depth.height);
+		return sensor_msgs::msg::Image();
+	}
 	if(cvLabels.image.size() != size)
 	{
 		cv::resize(cvLabels.image, cvLabels.image, size, 0, 0, cv::INTER_NEAREST);
@@ -288,7 +248,7 @@ void RGBDSync::publish(
 		  const sensor_msgs::msg::Image::ConstSharedPtr image,
 		  const sensor_msgs::msg::Image::ConstSharedPtr depth,
 		  const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo,
-		  const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & labels)
+		  const sensor_msgs::msg::Image::ConstSharedPtr labels)
 {
 	syncDiagnostic_->tickInput(image->header.stamp);
 	if(rgbdImagePub_->get_subscription_count() || rgbdImageCompressedPub_->get_subscription_count())

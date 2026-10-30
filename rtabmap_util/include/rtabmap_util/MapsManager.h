@@ -34,6 +34,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rtabmap/core/LocalGrid.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <memory>
+#include <vector>
+
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -253,7 +256,6 @@ private:
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridMapPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridProbMapPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr labelMapPub_;
-	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr objectMapPub_;
 #ifdef RTABMAP_OCTOMAP
 #ifdef WITH_OCTOMAP_MSGS
 	rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr octoMapPubBin_;
@@ -294,18 +296,26 @@ private:
 	int labelFloor_;
 	void addLabelCells(int id, const rtabmap::SensorData & data);
 
-	/// Nodes' object cells (rtabmap::SensorData::gridObjectCells()), assembled into an
-	/// rtabmap::ObjectGrid published on the grid map's cells.
-	rtabmap::LocalGridCache objectMaps_;
-	rtabmap::ObjectGrid * objectGrid_;
-	bool objectGridUpdated_;
+	/// One object channel of the labels: its nodes' object cells
+	/// (rtabmap::SensorData::gridObjectCells()), assembled into an rtabmap::ObjectGrid
+	/// published on the grid map's cells as object_map/<name>.
+	struct ObjectMap
+	{
+		rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr pub;
+		rtabmap::LocalGridCache cache;
+		std::unique_ptr<rtabmap::ObjectGrid> grid;
+		bool updated = false;
+	};
+	/// The object_maps parameter's names in order: the labels' channel i + 1 is objectMaps_[i].
+	std::vector<std::unique_ptr<ObjectMap> > objectMaps_;
+	bool objectMapSubscribers() const;
 	void addObjectCells(int id, const rtabmap::SensorData & data);
 
 	void updateLabelGrids(
 			const std::map<int, rtabmap::Transform> & poses,
 			const rtabmap::Memory * memory,
 			const std::map<int, rtabmap::Signature> & signatures);
-	void publishObjectMap(const rclcpp::Time & stamp, const std::string & mapFrameId);
+	void publishObjectMap(ObjectMap & objectMap, const rclcpp::Time & stamp, const std::string & mapFrameId);
 
 #ifdef RTABMAP_OCTOMAP
 	rtabmap::OctoMap * octomap_;

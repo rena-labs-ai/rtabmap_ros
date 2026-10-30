@@ -338,7 +338,7 @@ void rgbdImageToROS(const rtabmap::SensorData & data, rtabmap_msgs::msg::RGBDIma
 		cv_bridge::CvImage cvLabels;
 		cvLabels.header = header;
 		cvLabels.image = data.labelsRaw();
-		cvLabels.encoding = data.labelsRaw().channels() == 1 ? sensor_msgs::image_encodings::MONO8 : sensor_msgs::image_encodings::TYPE_8UC2;
+		cvLabels.encoding = data.labelsRaw().channels() == 1 ? sensor_msgs::image_encodings::MONO8 : uFormat("8UC%d", data.labelsRaw().channels());
 		cvLabels.toImageMsg(msg.labels);
 	}
 

@@ -202,35 +202,32 @@ TEST_F(RGBDSyncTest, ExactSyncRejectsFramesWithDifferentStamps)
 	EXPECT_TRUE(spinUntil([&]() { return !out_->empty(); }));
 }
 
-TEST_F(RGBDSyncTest, ObjectLabelsRideAsTheSecondChannelOfTheLabels)
+TEST_F(RGBDSyncTest, MultiChannelLabelsAreForwardedAsTheyAre)
 {
 	start({rclcpp::Parameter("approx_sync", false),
-		   rclcpp::Parameter("subscribe_object_labels", true)});
+		   rclcpp::Parameter("subscribe_labels", true)});
 	rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr labelsPub =
 			helper()->create_publisher<sensor_msgs::msg::Image>("labels/image", 10);
-	rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr objectsPub =
-			helper()->create_publisher<sensor_msgs::msg::Image>("object_labels/image", 10);
-	ASSERT_TRUE(waitForSubscriber(labelsPub)) << "object labels imply the labels";
-	ASSERT_TRUE(waitForSubscriber(objectsPub));
+	ASSERT_TRUE(waitForSubscriber(labelsPub));
 
+	sensor_msgs::msg::Image labels = makeMonoImage("camera_link", 1000.0, 8, 8, 255);
+	cv::Mat channels;
+	cv::merge(std::vector<cv::Mat>{cv::Mat(8, 8, CV_8UC1, cv::Scalar(255)), cv::Mat(8, 8, CV_8UC1, cv::Scalar(3)),
+			cv::Mat(8, 8, CV_8UC1, cv::Scalar(5))}, channels);
+	labels.encoding = "8UC3";
+	labels.step = 8 * 3;
+	labels.data.assign(channels.data, channels.data + channels.total() * channels.elemSize());
 	publish(1000.0);
-	labelsPub->publish(makeMonoImage("camera_link", 1000.0, 8, 8, 255));
-	objectsPub->publish(makeMonoImage("camera_link", 1000.0, 8, 8, 3));
+	labelsPub->publish(labels);
 	ASSERT_TRUE(spinUntil([&]() { return !out_->empty(); }));
 
-	const sensor_msgs::msg::Image & labels = out_->back().labels;
-	EXPECT_EQ(labels.encoding, "8UC2");
-	ASSERT_EQ(labels.width, 8u);
-	ASSERT_EQ(labels.height, 8u);
-	EXPECT_EQ(labels.data[0], 255);
-	EXPECT_EQ(labels.data[1], 3);
-
-	publish(1001.0);
-	labelsPub->publish(makeMonoImage("camera_link", 1001.0, 8, 8, 255));
-	objectsPub->publish(makeMonoImage("camera_link", 1001.0, 4, 4, 3));
-	ASSERT_TRUE(spinUntil([&]() { return out_->size() == 2; }));
-	EXPECT_TRUE(out_->back().labels.data.empty())
-		<< "object labels not of the depth's size: no labels at all";
+	const sensor_msgs::msg::Image & out = out_->back().labels;
+	EXPECT_EQ(out.encoding, "8UC3");
+	ASSERT_EQ(out.width, 8u);
+	ASSERT_EQ(out.height, 8u);
+	EXPECT_EQ(out.data[0], 255);
+	EXPECT_EQ(out.data[1], 3);
+	EXPECT_EQ(out.data[2], 5);
 }
 
 TEST_F(RGBDSyncTest, ApproxSyncMaxIntervalRejectsDistantFrames)

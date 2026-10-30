@@ -75,25 +75,19 @@ public:
 			const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo,
 			const sensor_msgs::msg::Image::ConstSharedPtr labels);
 
-	void objectLabelsCallback(
-			const sensor_msgs::msg::Image::ConstSharedPtr image,
-			const sensor_msgs::msg::Image::ConstSharedPtr depth,
-			const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo,
-			const sensor_msgs::msg::Image::ConstSharedPtr labels,
-			const sensor_msgs::msg::Image::ConstSharedPtr objectLabels);
-
 private:
-	/// @param labels the label images, one per channel of the output's labels
+	/// @param labels the label image, null for none
 	void publish(
 			const sensor_msgs::msg::Image::ConstSharedPtr image,
 			const sensor_msgs::msg::Image::ConstSharedPtr depth,
 			const sensor_msgs::msg::CameraInfo::ConstSharedPtr cameraInfo,
-			const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & labels);
+			const sensor_msgs::msg::Image::ConstSharedPtr labels);
 
-	/// The labels forwarded with @p depth: each mono8 image of its stamp and size as one
-	/// channel, resized to @p size; none when one does not match.
+	/// The labels forwarded with @p depth: an 8-bit image of any channel count (channels after
+	/// the first: object labels) of its stamp and size, resized to @p size; none when it does
+	/// not match.
 	sensor_msgs::msg::Image forwardedLabels(
-			const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & labels,
+			const sensor_msgs::msg::Image::ConstSharedPtr labels,
 			const sensor_msgs::msg::Image & depth,
 			const cv::Size & size) const;
 
@@ -114,7 +108,6 @@ private:
 	image_transport::SubscriberFilter imageDepthSub_;
 	message_filters::Subscriber<sensor_msgs::msg::CameraInfo> cameraInfoSub_;
 	message_filters::Subscriber<sensor_msgs::msg::Image> labelsSub_;
-	message_filters::Subscriber<sensor_msgs::msg::Image> objectLabelsSub_;
 
 	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo> MyApproxSyncDepthPolicy;
 	message_filters::Synchronizer<MyApproxSyncDepthPolicy> * approxSyncDepth_;
@@ -127,12 +120,6 @@ private:
 
 	typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo, sensor_msgs::msg::Image> MyExactSyncLabelsPolicy;
 	message_filters::Synchronizer<MyExactSyncLabelsPolicy> * exactSyncLabels_;
-
-	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo, sensor_msgs::msg::Image, sensor_msgs::msg::Image> MyApproxSyncObjectLabelsPolicy;
-	message_filters::Synchronizer<MyApproxSyncObjectLabelsPolicy> * approxSyncObjectLabels_;
-
-	typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo, sensor_msgs::msg::Image, sensor_msgs::msg::Image> MyExactSyncObjectLabelsPolicy;
-	message_filters::Synchronizer<MyExactSyncObjectLabelsPolicy> * exactSyncObjectLabels_;
 
 	std::unique_ptr<SyncDiagnostic> syncDiagnostic_;
 };
