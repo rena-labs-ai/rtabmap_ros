@@ -60,6 +60,7 @@ set(msg_files
    "msg/EnvSensor.msg"
    "msg/CameraModel.msg"
    "msg/CameraModels.msg"
+   "msg/GridLastSeen.msg"
 )
 
 # declare the service files to generate code for

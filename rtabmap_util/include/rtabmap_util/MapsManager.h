@@ -40,6 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <rtabmap_msgs/msg/grid_last_seen.hpp>
 
 #if defined(WITH_OCTOMAP_MSGS) and defined(RTABMAP_OCTOMAP)
 #include <octomap_msgs/msg/octomap.hpp>
@@ -254,6 +255,9 @@ private:
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudGroundPub_;
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudObstaclesPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridMapPub_;
+	rclcpp::Publisher<rtabmap_msgs::msg::GridLastSeen>::SharedPtr gridMapLastSeenPub_;
+	rclcpp::Publisher<rtabmap_msgs::msg::GridLastSeen>::SharedPtr labelMapLastSeenPub_;
+	std::map<int, double> nodeStamps_; ///< stamps of the nodes the last_seen maps refer to
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridProbMapPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr labelMapPub_;
 #ifdef RTABMAP_OCTOMAP
@@ -302,6 +306,7 @@ private:
 	struct ObjectMap
 	{
 		rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr pub;
+		rclcpp::Publisher<rtabmap_msgs::msg::GridLastSeen>::SharedPtr lastSeenPub;
 		rtabmap::LocalGridCache cache;
 		std::unique_ptr<rtabmap::ObjectGrid> grid;
 		bool updated = false;
@@ -316,6 +321,12 @@ private:
 			const rtabmap::Memory * memory,
 			const std::map<int, rtabmap::Signature> & signatures);
 	void publishObjectMap(ObjectMap & objectMap, const rclcpp::Time & stamp, const std::string & mapFrameId);
+	/// Each <map>/last_seen with subscribers, on the grid map's cells, when its map changed.
+	void publishLastSeen(const rclcpp::Time & stamp, const std::string & mapFrameId);
+	/// `nodes` (`CV_32SC1` node ids from xMin, yMin) on the grid map's cells, as the stamps of those nodes.
+	cv::Mat lastSeenStamps(const cv::Mat & nodes, float xMin, float yMin, const cv::Size & gridSize, float gridXMin, float gridYMin, float cellSize) const;
+	void rememberStamps(const std::map<int, rtabmap::Transform> & poses, const rtabmap::Memory * memory, const std::map<int, rtabmap::Signature> & signatures);
+	bool lastSeenSubscribers() const;
 
 #ifdef RTABMAP_OCTOMAP
 	rtabmap::OctoMap * octomap_;

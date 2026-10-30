@@ -14,6 +14,7 @@ All rights reserved. (BSD-3-Clause, see the repository root.)
 #include <rtabmap/utilite/UStl.h>
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <rtabmap_msgs/msg/grid_last_seen.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <algorithm>
@@ -503,6 +504,41 @@ TEST_F(MapsManagerTest, PublishesTheOccupancyGrid)
 	EXPECT_EQ(cellAt(map, 1.0, 0.0), 100) << "node 1's obstacle";
 	EXPECT_EQ(cellAt(map, 3.0, -0.1), 100) << "node 2's obstacle";
 	EXPECT_EQ(cellAt(map, 0.5, -0.1), 0) << "node 1's ground";
+}
+
+TEST_F(MapsManagerTest, PublishesWhenEachGridCellWasLastSeen)
+{
+	start();
+	std::shared_ptr<Collector<rtabmap_msgs::msg::GridLastSeen>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::GridLastSeen>("map/last_seen");
+
+	updateAndPublish();
+
+	ASSERT_FALSE(lastSeen->empty()) << "no last_seen published with only its subscriber";
+	const rtabmap_msgs::msg::GridLastSeen & msg = lastSeen->back();
+	float xMin = 0.0f, yMin = 0.0f, cellSize = 0.0f;
+	const cv::Mat pixels = maps_->getGridMap(xMin, yMin, cellSize);
+	ASSERT_EQ(msg.width, uint32_t(pixels.cols));
+	ASSERT_EQ(msg.height, uint32_t(pixels.rows));
+	EXPECT_NEAR(msg.origin.position.x, xMin, 1e-6);
+	EXPECT_NEAR(msg.origin.position.y, yMin, 1e-6);
+	EXPECT_NEAR(msg.resolution, cellSize, 1e-6);
+	const auto at = [&](double x, double y) {
+		const int col = int((x - xMin) / cellSize);
+		const int row = int((y - yMin) / cellSize);
+		return msg.last_seen[size_t(row) * msg.width + col];
+	};
+	EXPECT_EQ(at(1.0, 0.0), 1001.0) << "node 1's obstacle: node 1's stamp";
+	EXPECT_EQ(at(3.0, -0.1), 1002.0) << "node 2's obstacle: node 2's stamp";
+	for(int row=0; row<pixels.rows; ++row)
+	{
+		for(int col=0; col<pixels.cols; ++col)
+		{
+			const double stamp = msg.last_seen[size_t(row) * msg.width + col];
+			EXPECT_EQ(pixels.at<signed char>(row, col) == -1, stamp == 0.0)
+					<< "cell (" << col << ", " << row << "): unknown exactly when never seen";
+		}
+	}
 }
 
 TEST_F(MapsManagerTest, CellSizeParameterChangesTheResolution)
