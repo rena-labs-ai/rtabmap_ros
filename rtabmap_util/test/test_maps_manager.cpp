@@ -609,6 +609,34 @@ TEST_F(MapsManagerTest, EachLabelerIsAChannelWithItsAges)
 	EXPECT_TRUE(std::isnan(near("things", 1.5, 0.1))) << "never seen";
 }
 
+TEST_F(MapsManagerTest, ALabelerThatHasNotVotedIsANeverSeenChannel)
+{
+	start({}, {{rtabmap::Parameters::kGridLabelers(), "floor:2 things:4"}});
+	std::shared_ptr<Collector<grid_map_msgs::msg::GridMap>> layers =
+			collectFromMaps<grid_map_msgs::msg::GridMap>("map/channels");
+
+	const rtabmap::LabelLayout labelers = rtabmap::LabelLayout::parse("floor:2 things:4");
+	std::map<int, rtabmap::Signature> signatures = scene();
+	for(std::pair<const int, rtabmap::Signature> & node : signatures)
+	{
+		rtabmap::LabelRaster raster(10, -2, 0.05f, 1, 1);
+		raster.set(labelers, 0, 0, 0, 1);  // floor votes, things does not
+		node.second.sensorData().setGridLabelRaster(raster);
+	}
+	const std::map<int, rtabmap::Transform> poses = posesOfScene();
+	maps_->updateMapCaches(poses, /*memory=*/0, true, false, signatures);
+	maps_->publishMaps(poses, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
+	spinFor(std::chrono::milliseconds(100));
+
+	ASSERT_FALSE(layers->empty());
+	grid_map::GridMap map;
+	ASSERT_TRUE(grid_map::GridMapRosConverter::fromMessage(layers->back(), map));
+	ASSERT_TRUE(map.exists("things"));
+	ASSERT_TRUE(map.exists("things_age"));
+	EXPECT_TRUE(map["things"].array().isNaN().all()) << "never seen";
+	EXPECT_TRUE(map["things_age"].array().isNaN().all());
+}
+
 TEST_F(MapsManagerTest, CellSizeParameterChangesTheResolution)
 {
 	rtabmap::ParametersMap parameters;
