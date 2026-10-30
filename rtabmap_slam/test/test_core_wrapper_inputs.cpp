@@ -9,6 +9,8 @@ All rights reserved. (BSD-3-Clause, see the repository root.)
 
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <grid_map_msgs/msg/grid_map.hpp>
+#include <grid_map_ros/GridMapRosConverter.hpp>
 #include <nav_msgs/srv/get_map.hpp>
 
 #include <rtabmap_msgs/msg/env_sensor.hpp>
@@ -97,6 +99,35 @@ protected:
 			}
 		}
 		return best;
+	}
+
+	/// One channel of map/channels as an occupancy grid on the same cells (NaN: -1).
+	static nav_msgs::msg::OccupancyGrid layerGrid(const grid_map_msgs::msg::GridMap & msg, const std::string & layer)
+	{
+		grid_map::GridMap map;
+		EXPECT_TRUE(grid_map::GridMapRosConverter::fromMessage(msg, map));
+		EXPECT_TRUE(map.exists(layer)) << layer;
+		nav_msgs::msg::OccupancyGrid grid;
+		grid.info.resolution = map.getResolution();
+		grid.info.width = map.getSize()(0);
+		grid.info.height = map.getSize()(1);
+		grid.info.origin.position.x = map.getPosition().x() - map.getLength().x() / 2.0;
+		grid.info.origin.position.y = map.getPosition().y() - map.getLength().y() / 2.0;
+		grid.data.assign(size_t(grid.info.width) * grid.info.height, -1);
+		for(unsigned int row=0; row<grid.info.height; ++row)
+		{
+			for(unsigned int col=0; col<grid.info.width; ++col)
+			{
+				const float value = map.atPosition(layer, grid_map::Position(
+						grid.info.origin.position.x + (col + 0.5) * grid.info.resolution,
+						grid.info.origin.position.y + (row + 0.5) * grid.info.resolution));
+				if(!std::isnan(value))
+				{
+					grid.data[size_t(row) * grid.info.width + col] = (signed char)value;
+				}
+			}
+		}
+		return grid;
 	}
 
 	static std::string where(double x, double y)
@@ -434,8 +465,8 @@ TEST_F(CoreWrapperInputsTest, maps_an_rgbd_image)
 
 /**
  * Object labels ride as the channels after the first of an RGB-D image's labels, as rgbd_sync
- * forwards them: each channel's object cells are its own object map (object_maps), on map's
- * cells -- the object's label where it lies, 0 on the floor seen around it, -1 where the
+ * forwards them: each channel's object cells are its own channel of map/channels (object_maps), on
+ * map's cells -- the object's label where it lies, 0 on the floor seen around it, NaN where the
  * camera never looked.
  */
 TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
@@ -464,10 +495,8 @@ TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 			  rclcpp::Parameter("Grid/NormalsSegmentation", "false"),
 			  rclcpp::Parameter("Grid/MaxGroundHeight", "0.05"),
 			  rclcpp::Parameter("object_maps", std::vector<std::string>{"first", "second"})});
-	std::shared_ptr<Collector<nav_msgs::msg::OccupancyGrid>> objectMap =
-			collect<nav_msgs::msg::OccupancyGrid>("object_map/first", rclcpp::QoS(1).reliable().transient_local());
-	std::shared_ptr<Collector<nav_msgs::msg::OccupancyGrid>> secondMap =
-			collect<nav_msgs::msg::OccupancyGrid>("object_map/second", rclcpp::QoS(1).reliable().transient_local());
+	std::shared_ptr<Collector<grid_map_msgs::msg::GridMap>> layers =
+			collect<grid_map_msgs::msg::GridMap>("map/channels", rclcpp::QoS(1).reliable().transient_local());
 	std::shared_ptr<Collector<nav_msgs::msg::OccupancyGrid>> grid =
 			collect<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(1).reliable().transient_local());
 	std::shared_ptr<Collector<rtabmap_msgs::msg::Info>> info = collectInfo();
@@ -475,8 +504,7 @@ TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 	rclcpp::Publisher<rtabmap_msgs::msg::RGBDImage>::SharedPtr rgbd =
 			helper()->create_publisher<rtabmap_msgs::msg::RGBDImage>("rgbd_image", 10);
 	ASSERT_TRUE(waitForSubscriber(rgbd));
-	ASSERT_TRUE(waitForPublisher(objectMap->subscription));
-	ASSERT_TRUE(waitForPublisher(secondMap->subscription));
+	ASSERT_TRUE(waitForPublisher(layers->subscription));
 	ASSERT_TRUE(waitForPublisher(grid->subscription));
 
 	rtabmap_msgs::msg::RGBDImage msg;
@@ -489,21 +517,22 @@ TEST_F(CoreWrapperInputsTest, maps_object_labels_on_the_grid_cells)
 	msg.depth_camera_info = msg.rgb_camera_info;
 	sendOdom(odom, 1.0, 0.0);
 	rgbd->publish(msg);
-	ASSERT_TRUE(spinUntil([&]() { return !info->empty() && !objectMap->empty() && !secondMap->empty() && !grid->empty(); }));
+	ASSERT_TRUE(spinUntil([&]() { return !info->empty() && !layers->empty() && !grid->empty(); }));
 
-	const nav_msgs::msg::OccupancyGrid & objectsGrid = objectMap->back();
+	const nav_msgs::msg::OccupancyGrid objectsGrid = layerGrid(layers->back(), "first");
+	const nav_msgs::msg::OccupancyGrid secondGrid = layerGrid(layers->back(), "second");
 	const nav_msgs::msg::OccupancyGrid & map = grid->back();
-	EXPECT_EQ("map", objectsGrid.header.frame_id);
+	EXPECT_EQ("map", layers->back().header.frame_id);
 	EXPECT_EQ(map.info.width, objectsGrid.info.width) << "on map's cells";
 	EXPECT_EQ(map.info.height, objectsGrid.info.height);
 	EXPECT_FLOAT_EQ(map.info.resolution, objectsGrid.info.resolution);
-	EXPECT_DOUBLE_EQ(map.info.origin.position.x, objectsGrid.info.origin.position.x);
-	EXPECT_DOUBLE_EQ(map.info.origin.position.y, objectsGrid.info.origin.position.y);
+	EXPECT_NEAR(map.info.origin.position.x, objectsGrid.info.origin.position.x, 1e-5);
+	EXPECT_NEAR(map.info.origin.position.y, objectsGrid.info.origin.position.y, 1e-5);
 	EXPECT_EQ(3, occupancyAround(objectsGrid, 1.0, 0.0)) << "the object";
 	EXPECT_EQ(0, occupancyAround(objectsGrid, 1.0, 0.5)) << "the floor beside it";
 	EXPECT_EQ(-1, occupancyAt(objectsGrid, -0.5, 0.0)) << "behind the camera";
-	EXPECT_EQ(6, occupancyAround(secondMap->back(), 1.0, 0.0)) << "the second channel's own map";
-	EXPECT_EQ(0, occupancyAround(secondMap->back(), 1.0, 0.5));
+	EXPECT_EQ(6, occupancyAround(secondGrid, 1.0, 0.0)) << "the second channel's own";
+	EXPECT_EQ(0, occupancyAround(secondGrid, 1.0, 0.5));
 }
 
 /**

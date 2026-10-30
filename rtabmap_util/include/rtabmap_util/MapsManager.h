@@ -40,7 +40,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
-#include <rtabmap_msgs/msg/grid_last_seen.hpp>
+#ifdef WITH_GRID_MAP_ROS
+#include <grid_map_msgs/msg/grid_map.hpp>
+#endif
 
 #if defined(WITH_OCTOMAP_MSGS) and defined(RTABMAP_OCTOMAP)
 #include <octomap_msgs/msg/octomap.hpp>
@@ -255,11 +257,13 @@ private:
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudGroundPub_;
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudObstaclesPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridMapPub_;
-	rclcpp::Publisher<rtabmap_msgs::msg::GridLastSeen>::SharedPtr gridMapLastSeenPub_;
-	rclcpp::Publisher<rtabmap_msgs::msg::GridLastSeen>::SharedPtr labelMapLastSeenPub_;
-	std::map<int, double> nodeStamps_; ///< stamps of the nodes the last_seen maps refer to
+#ifdef WITH_GRID_MAP_ROS
+	/// map/channels: the grid map with every label grid on its cells (see publishChannels()).
+	rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr channelsPub_;
+#endif
+	std::string labelChannel_ = "labels"; ///< the label grid's channel name (label_map parameter)
+	std::map<int, double> nodeStamps_; ///< stamps of the nodes the channels' ages refer to
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridProbMapPub_;
-	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr labelMapPub_;
 #ifdef RTABMAP_OCTOMAP
 #ifdef WITH_OCTOMAP_MSGS
 	rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr octoMapPubBin_;
@@ -301,32 +305,26 @@ private:
 	void addLabelCells(int id, const rtabmap::SensorData & data);
 
 	/// One object channel of the labels: its nodes' object cells
-	/// (rtabmap::SensorData::gridObjectCells()), assembled into an rtabmap::ObjectGrid
-	/// published on the grid map's cells as object_map/<name>.
+	/// (rtabmap::SensorData::gridObjectCells()), assembled into an rtabmap::ObjectGrid,
+	/// published as the channel <name> of map/channels.
 	struct ObjectMap
 	{
-		rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr pub;
-		rclcpp::Publisher<rtabmap_msgs::msg::GridLastSeen>::SharedPtr lastSeenPub;
+		std::string name;
 		rtabmap::LocalGridCache cache;
 		std::unique_ptr<rtabmap::ObjectGrid> grid;
 		bool updated = false;
 	};
 	/// The object_maps parameter's names in order: the labels' channel i + 1 is objectMaps_[i].
 	std::vector<std::unique_ptr<ObjectMap> > objectMaps_;
-	bool objectMapSubscribers() const;
 	void addObjectCells(int id, const rtabmap::SensorData & data);
 
 	void updateLabelGrids(
 			const std::map<int, rtabmap::Transform> & poses,
 			const rtabmap::Memory * memory,
 			const std::map<int, rtabmap::Signature> & signatures);
-	void publishObjectMap(ObjectMap & objectMap, const rclcpp::Time & stamp, const std::string & mapFrameId);
-	/// Each <map>/last_seen with subscribers, on the grid map's cells, when its map changed.
-	void publishLastSeen(const rclcpp::Time & stamp, const std::string & mapFrameId);
-	/// `nodes` (`CV_32SC1` node ids from xMin, yMin) on the grid map's cells, as the stamps of those nodes.
-	cv::Mat lastSeenStamps(const cv::Mat & nodes, float xMin, float yMin, const cv::Size & gridSize, float gridXMin, float gridYMin, float cellSize) const;
+	bool channelsSubscribed() const;
+	void publishChannels(const rclcpp::Time & stamp, const std::string & mapFrameId);
 	void rememberStamps(const std::map<int, rtabmap::Transform> & poses, const rtabmap::Memory * memory, const std::map<int, rtabmap::Signature> & signatures);
-	bool lastSeenSubscribers() const;
 
 #ifdef RTABMAP_OCTOMAP
 	rtabmap::OctoMap * octomap_;

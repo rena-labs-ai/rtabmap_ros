@@ -14,7 +14,9 @@ All rights reserved. (BSD-3-Clause, see the repository root.)
 #include <rtabmap/utilite/UStl.h>
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
-#include <rtabmap_msgs/msg/grid_last_seen.hpp>
+#include <limits>
+#include <grid_map_msgs/msg/grid_map.hpp>
+#include <grid_map_ros/GridMapRosConverter.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <algorithm>
@@ -506,39 +508,99 @@ TEST_F(MapsManagerTest, PublishesTheOccupancyGrid)
 	EXPECT_EQ(cellAt(map, 0.5, -0.1), 0) << "node 1's ground";
 }
 
-TEST_F(MapsManagerTest, PublishesWhenEachGridCellWasLastSeen)
+TEST_F(MapsManagerTest, PublishesTheGridAndWhenEachCellWasSeenAsChannels)
 {
 	start();
-	std::shared_ptr<Collector<rtabmap_msgs::msg::GridLastSeen>> lastSeen =
-			collectFromMaps<rtabmap_msgs::msg::GridLastSeen>("map/last_seen");
+	std::shared_ptr<Collector<grid_map_msgs::msg::GridMap>> layers =
+			collectFromMaps<grid_map_msgs::msg::GridMap>("map/channels");
 
-	updateAndPublish();
+	const std::map<int, rtabmap::Transform> poses = posesOfScene();
+	maps_->updateMapCaches(poses, /*memory=*/0, true, false, scene());
+	maps_->publishMaps(poses, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
+	spinFor(std::chrono::milliseconds(100));
 
-	ASSERT_FALSE(lastSeen->empty()) << "no last_seen published with only its subscriber";
-	const rtabmap_msgs::msg::GridLastSeen & msg = lastSeen->back();
+	ASSERT_FALSE(layers->empty()) << "no channels published with only their subscriber";
+	grid_map::GridMap map;
+	ASSERT_TRUE(grid_map::GridMapRosConverter::fromMessage(layers->back(), map));
+	EXPECT_EQ(map.getFrameId(), "map");
+	ASSERT_TRUE(map.exists("occupancy"));
+	ASSERT_TRUE(map.exists("occupancy_age"));
 	float xMin = 0.0f, yMin = 0.0f, cellSize = 0.0f;
 	const cv::Mat pixels = maps_->getGridMap(xMin, yMin, cellSize);
-	ASSERT_EQ(msg.width, uint32_t(pixels.cols));
-	ASSERT_EQ(msg.height, uint32_t(pixels.rows));
-	EXPECT_NEAR(msg.origin.position.x, xMin, 1e-6);
-	EXPECT_NEAR(msg.origin.position.y, yMin, 1e-6);
-	EXPECT_NEAR(msg.resolution, cellSize, 1e-6);
-	const auto at = [&](double x, double y) {
-		const int col = int((x - xMin) / cellSize);
-		const int row = int((y - yMin) / cellSize);
-		return msg.last_seen[size_t(row) * msg.width + col];
+	ASSERT_EQ(map.getSize()(0), pixels.cols) << "x";
+	ASSERT_EQ(map.getSize()(1), pixels.rows) << "y";
+	EXPECT_NEAR(map.getResolution(), cellSize, 1e-6);
+	const auto at = [&](const std::string & layer, double x, double y) {
+		return map.atPosition(layer, grid_map::Position(x, y));
 	};
-	EXPECT_EQ(at(1.0, 0.0), 1001.0) << "node 1's obstacle: node 1's stamp";
-	EXPECT_EQ(at(3.0, -0.1), 1002.0) << "node 2's obstacle: node 2's stamp";
 	for(int row=0; row<pixels.rows; ++row)
 	{
 		for(int col=0; col<pixels.cols; ++col)
 		{
-			const double stamp = msg.last_seen[size_t(row) * msg.width + col];
-			EXPECT_EQ(pixels.at<signed char>(row, col) == -1, stamp == 0.0)
-					<< "cell (" << col << ", " << row << "): unknown exactly when never seen";
+			const double x = xMin + (col + 0.5) * cellSize, y = yMin + (row + 0.5) * cellSize;
+			const signed char pixel = pixels.at<signed char>(row, col);
+			const float occupancy = at("occupancy", x, y);
+			if(pixel == -1)
+			{
+				EXPECT_TRUE(std::isnan(occupancy)) << "cell (" << col << ", " << row << ")";
+			}
+			else
+			{
+				EXPECT_EQ(occupancy, float(pixel)) << "cell (" << col << ", " << row << "): /map's value";
+			}
+			EXPECT_EQ(std::isnan(at("occupancy_age", x, y)), std::isnan(occupancy))
+					<< "cell (" << col << ", " << row << "): an age exactly where observed";
 		}
 	}
+	EXPECT_FLOAT_EQ(at("occupancy_age", 1.0, 0.0), 9.0f) << "node 1 (stamp 1001)'s obstacle";
+	EXPECT_FLOAT_EQ(at("occupancy_age", 3.0, -0.1), 8.0f) << "node 2 (stamp 1002)'s obstacle";
+}
+
+TEST_F(MapsManagerTest, EachObjectMapIsAChannelWithItsAges)
+{
+	start({rclcpp::Parameter("object_maps", std::vector<std::string>{"things"})});
+	std::shared_ptr<Collector<grid_map_msgs::msg::GridMap>> layers =
+			collectFromMaps<grid_map_msgs::msg::GridMap>("map/channels");
+
+	// The scene, its nodes each seeing a thing labelled 3 by its own pose's obstacle.
+	std::map<int, rtabmap::Signature> signatures = scene();
+	for(std::pair<const int, rtabmap::Signature> & node : signatures)
+	{
+		cv::Mat cells(1, 1, CV_32FC4, cv::Scalar(0.5f, -0.1f, 1.0f, 3.0f));
+		node.second.sensorData().setGridObjectCells(cells);
+	}
+	const std::map<int, rtabmap::Transform> poses = posesOfScene();
+	maps_->updateMapCaches(poses, /*memory=*/0, true, false, signatures);
+	maps_->publishMaps(poses, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
+	spinFor(std::chrono::milliseconds(100));
+
+	ASSERT_FALSE(layers->empty());
+	grid_map::GridMap map;
+	ASSERT_TRUE(grid_map::GridMapRosConverter::fromMessage(layers->back(), map));
+	ASSERT_TRUE(map.exists("things"));
+	ASSERT_TRUE(map.exists("things_age"));
+	// The object grid's cells are whole cells from the world origin, the grid map's are
+	// not: a cell lands within one cell of where it was seen.
+	const double cellSize = map.getResolution();
+	const auto near = [&](const std::string & channel, double x, double y) {
+		for(const double dx : {0.0, -cellSize, cellSize})
+		{
+			for(const double dy : {0.0, -cellSize, cellSize})
+			{
+				const float value = map.atPosition(channel, grid_map::Position(x + dx, y + dy));
+				if(!std::isnan(value))
+				{
+					return value;
+				}
+			}
+		}
+		return std::numeric_limits<float>::quiet_NaN();
+	};
+	EXPECT_EQ(near("things", 0.5, -0.1), 3.0f) << "node 1's thing";
+	EXPECT_EQ(near("things", 2.5, -0.1), 3.0f) << "node 2's thing";
+	EXPECT_FLOAT_EQ(near("things_age", 0.5, -0.1), 9.0f) << "node 1 (stamp 1001)";
+	EXPECT_FLOAT_EQ(near("things_age", 2.5, -0.1), 8.0f) << "node 2 (stamp 1002)";
+	EXPECT_TRUE(std::isnan(near("things", 1.5, 0.1))) << "never seen";
 }
 
 TEST_F(MapsManagerTest, CellSizeParameterChangesTheResolution)
