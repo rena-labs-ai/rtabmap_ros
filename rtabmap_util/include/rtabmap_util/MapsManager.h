@@ -262,8 +262,8 @@ private:
 	/// map/last_seen: when each cell of map was last observed (see publishChannels()).
 	rclcpp::Publisher<rtabmap_msgs::msg::LastSeenGrid>::SharedPtr lastSeenPub_;
 	std::map<int, double> nodeStamps_; ///< stamps of the nodes the cells were last observed by
-	rclcpp::Node * node_ = nullptr; ///< for the labelers' publishers, made with the parameters
-	rclcpp::PublisherOptions mapPubOptions_;
+	/// map/labels: the label of each cell of map (see publishChannels()).
+	rclcpp::Publisher<rtabmap_msgs::msg::LabelGrid>::SharedPtr labelsPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridProbMapPub_;
 #ifdef RTABMAP_OCTOMAP
 #ifdef WITH_OCTOMAP_MSGS
@@ -296,22 +296,11 @@ private:
 	rtabmap::LocalGridMaker * localMapMaker_;
 	bool gridUpdated_;
 
-	/// One labeler (Grid/Labelers): its labels in the nodes' label rasters
-	/// (rtabmap::SensorData::gridLabelRaster()), assembled into an rtabmap::ObjectGrid,
-	/// published on map/<name> (rtabmap_msgs/LabelGrid). A labeler of 0 bits stores no labels
-	/// and has none.
-	struct ObjectMap
-	{
-		std::string name;
-		int labeler = 0; ///< its index in Grid/Labelers
-		rclcpp::Publisher<rtabmap_msgs::msg::LabelGrid>::SharedPtr pub;
-		bool latched = false;
-		rtabmap::LocalGridCache cache;
-		std::unique_ptr<rtabmap::ObjectGrid> grid;
-		bool updated = false;
-	};
-	/// Grid/Labelers' labelers that store labels, in order.
-	std::vector<std::unique_ptr<ObjectMap> > objectMaps_;
+	/// The nodes' labels (rtabmap::SensorData::gridLabelRaster()), assembled into an
+	/// rtabmap::ObjectGrid, published on map/labels (rtabmap_msgs/LabelGrid).
+	rtabmap::LocalGridCache labelCache_;
+	std::unique_ptr<rtabmap::ObjectGrid> labelGrid_{new rtabmap::ObjectGrid(&labelCache_)};
+	bool labelsUpdated_ = false;
 	void addLabels(int id, const rtabmap::SensorData & data);
 
 	void updateLabelGrids(

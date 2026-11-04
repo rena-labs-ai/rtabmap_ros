@@ -931,6 +931,14 @@ CoreWrapper::CoreWrapper(const rclcpp::NodeOptions & options) :
 #ifdef WITH_FIDUCIAL_MSGS
 	fiducialTransfromsSub_ = this->create_subscription<fiducial_msgs::msg::FiducialTransformArray>("fiducial_transforms", 5, std::bind(&CoreWrapper::fiducialDetectionsAsyncCallback, this, std::placeholders::_1), landmarkSubOptions);
 #endif
+	const int labelFrames = this->declare_parameter("label_frames", 0);
+	for(int i=0; i<labelFrames; ++i)
+	{
+		labelFrameSubs_.push_back(this->create_subscription<rtabmap_msgs::msg::RGBDImage>(
+				uFormat("label_frame%d", i), rclcpp::QoS(1).reliability((rmw_qos_reliability_policy_t)qosEnvSensor),
+				[this, i](const rtabmap_msgs::msg::RGBDImage::SharedPtr msg) {labelFrameCallback(msg, i);},
+				envSensorAsyncSubOptions));
+	}
 	imuSub_ = this->create_subscription<sensor_msgs::msg::Imu>("imu", rclcpp::QoS(100).reliability((rmw_qos_reliability_policy_t)qosIMU), std::bind(&CoreWrapper::imuAsyncCallback, this, std::placeholders::_1), imuSubOptions);
 	republishNodeDataSub_ = this->create_subscription<std_msgs::msg::Int32MultiArray>(servicePrefix+"republish_node_data", 1, std::bind(&CoreWrapper::republishNodeDataCallback, this, std::placeholders::_1), subOptions);
 	parametersClient_ = std::make_shared<rclcpp::AsyncParametersClient>(this, std::string(), rclcpp::ParametersQoS(), processingCallbackGroup_);
@@ -2325,6 +2333,26 @@ void CoreWrapper::process(
 			data.setLandmarks(landmarks);
 		}
 
+		// Label frames: the newest of each camera since the last node, in this node's base frame
+		{
+			std::vector<std::pair<SensorData, Transform> > frames;
+			UScopeMutex lock(labelFramesMutex_);
+			for(const std::pair<const int, std::pair<SensorData, rclcpp::Time> > & frame : labelFrames_)
+			{
+				const Transform frameInNode = rtabmap_conversions::getMovingTransform(
+						frameId_, odomFrameId, stamp, frame.second.second, *tfBuffer_, waitForTransform_);
+				if(!frameInNode.isNull())
+				{
+					frames.push_back(std::make_pair(frame.second.first, frameInNode));
+				}
+			}
+			labelFrames_.clear();
+			if(!frames.empty())
+			{
+				data.setGridLabelRaster(mapsManager_.getLocalMapMaker()->createLabelRaster(frames));
+			}
+		}
+
 		// Env sensors
 		{
 			UScopeMutex lock(envSensorMutex_);
@@ -2783,6 +2811,33 @@ void CoreWrapper::envSensorAsyncCallback(const rtabmap_msgs::msg::EnvSensor::Sha
 		UScopeMutex lock(envSensorMutex_);
 		uInsert(envSensors_, std::make_pair(value.type(), value));
 	}
+}
+
+void CoreWrapper::labelFrameCallback(const rtabmap_msgs::msg::RGBDImage::SharedPtr frameMsg, int camera)
+{
+	if(paused_)
+	{
+		return;
+	}
+	cv_bridge::CvImageConstPtr rgb, depth;
+	rtabmap_conversions::toCvShare(*frameMsg, frameMsg, rgb, depth);
+	const cv_bridge::CvImageConstPtr labels = rtabmap_conversions::labelsToCvShare(*frameMsg, frameMsg);
+	const sensor_msgs::msg::CameraInfo & info = frameMsg->depth_camera_info.k[0] != 0.0 ? frameMsg->depth_camera_info : frameMsg->rgb_camera_info;
+	if(depth->image.empty() || labels->image.empty() || labels->image.type() != CV_8UC1 || labels->image.size() != depth->image.size())
+	{
+		RCLCPP_WARN(this->get_logger(), "Label frame %d ignored: it needs depth and one 8-bit label per depth pixel.", camera);
+		return;
+	}
+	const rclcpp::Time stamp(frameMsg->header.stamp);
+	const Transform localTransform = rtabmap_conversions::getTransform(frameId_, info.header.frame_id, stamp, *tfBuffer_, waitForTransform_);
+	if(localTransform.isNull())
+	{
+		return;
+	}
+	SensorData frame(cv::Mat(), depth->image.clone(), rtabmap_conversions::cameraModelFromROS(info, localTransform));
+	frame.setLabels(labels->image.clone());
+	UScopeMutex lock(labelFramesMutex_);
+	labelFrames_[camera] = std::make_pair(frame, stamp);
 }
 
 void CoreWrapper::landmarkDetectionAsyncCallback(const rtabmap_msgs::msg::LandmarkDetection::SharedPtr landmarkDetection)

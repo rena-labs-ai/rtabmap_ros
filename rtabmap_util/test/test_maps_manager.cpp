@@ -564,24 +564,21 @@ TEST_F(MapsManagerTest, PublishesWhenEachCellOfTheMapWasLastSeen)
 	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 3.0, -0.1)], 1002.0) << "node 2's obstacle: node 2's stamp";
 }
 
-TEST_F(MapsManagerTest, EachLabelerIsALabelGridOnTheMapsCells)
+TEST_F(MapsManagerTest, PublishesTheLabelsOnTheMapsCells)
 {
-	start({}, {{rtabmap::Parameters::kGridLabelers(), "floor:2 things:4"}});
-	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> floor =
-			collectFromMaps<rtabmap_msgs::msg::LabelGrid>("map/floor");
-	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> things =
-			collect<rtabmap_msgs::msg::LabelGrid>(topic("map/things"));
-	ASSERT_TRUE(waitForPublisher(things->subscription));
+	start();
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> labels =
+			collectFromMaps<rtabmap_msgs::msg::LabelGrid>("map/labels");
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collect<rtabmap_msgs::msg::LastSeenGrid>(topic("map/last_seen"));
+	ASSERT_TRUE(waitForPublisher(lastSeen->subscription));
 
-	// Each node sees, by its own pose's obstacle, a thing labelled 3 on what the floor
-	// labeler calls 1.
-	const rtabmap::LabelLayout labelers = rtabmap::LabelLayout::parse("floor:2 things:4");
+	// Each node sees, by its own pose's obstacle, a thing labelled 3.
 	std::map<int, rtabmap::Signature> signatures = scene();
 	for(std::pair<const int, rtabmap::Signature> & node : signatures)
 	{
 		rtabmap::LabelRaster raster(10, -2, 0.05f, 1, 1);  // the cell at (0.525, -0.075)
-		raster.set(labelers, 0, 0, 0, 1);
-		raster.set(labelers, 1, 0, 0, 3);
+		raster.set(0, 0, 3);
 		node.second.sensorData().setGridLabelRaster(raster);
 	}
 	const std::map<int, rtabmap::Transform> poses = posesOfScene();
@@ -589,49 +586,31 @@ TEST_F(MapsManagerTest, EachLabelerIsALabelGridOnTheMapsCells)
 	maps_->publishMaps(poses, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
 	spinFor(std::chrono::milliseconds(100));
 
-	ASSERT_FALSE(floor->empty());
-	ASSERT_FALSE(things->empty());
+	ASSERT_FALSE(labels->empty());
+	ASSERT_FALSE(lastSeen->empty());
 	float xMin = 0.0f, yMin = 0.0f, cellSize = 0.0f;
 	const cv::Mat pixels = maps_->getGridMap(xMin, yMin, cellSize);
-	EXPECT_EQ((int)things->back().info.width, pixels.cols) << "the map's cells";
-	EXPECT_EQ(things->back().labels.size(), pixels.total());
-	EXPECT_EQ(things->back().header.stamp, floor->back().header.stamp) << "one update, one stamp";
-	EXPECT_EQ(labelNear(floor->back(), 0.5, -0.1), 1) << "node 1's floor labeler";
-	EXPECT_EQ(labelNear(things->back(), 0.5, -0.1), 3) << "node 1's thing";
-	EXPECT_EQ(labelNear(things->back(), 2.5, -0.1), 3) << "node 2's thing";
-	EXPECT_EQ(labelNear(things->back(), 1.5, 0.1), 255) << "never seen";
+	EXPECT_EQ((int)labels->back().info.width, pixels.cols) << "the map's cells";
+	EXPECT_EQ(labels->back().labels.size(), pixels.total());
+	EXPECT_EQ(labels->back().header.stamp, lastSeen->back().header.stamp) << "one update, one stamp";
+	EXPECT_EQ(labelNear(labels->back(), 0.5, -0.1), 3) << "node 1's thing";
+	EXPECT_EQ(labelNear(labels->back(), 2.5, -0.1), 3) << "node 2's thing";
+	EXPECT_EQ(labelNear(labels->back(), 1.5, 0.1), 255) << "never seen";
 }
 
-TEST_F(MapsManagerTest, ALabelerOfZeroBitsHasNoLabelGrid)
+TEST_F(MapsManagerTest, NodesWithoutLabelsAreNeverSeen)
 {
-	start({}, {{rtabmap::Parameters::kGridLabelers(), "floor:0 things:4"}});
-	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> things =
-			collectFromMaps<rtabmap_msgs::msg::LabelGrid>("map/things");
-	EXPECT_EQ(node_->count_publishers(topic("map/floor")), 0u) << "an input only: nothing to publish";
-	EXPECT_EQ(node_->count_publishers(topic("map/things")), 1u);
-}
+	start();
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> labels =
+			collectFromMaps<rtabmap_msgs::msg::LabelGrid>("map/labels");
 
-TEST_F(MapsManagerTest, ALabelerThatHasNotVotedIsNeverSeen)
-{
-	start({}, {{rtabmap::Parameters::kGridLabelers(), "floor:2 things:4"}});
-	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> things =
-			collectFromMaps<rtabmap_msgs::msg::LabelGrid>("map/things");
-
-	const rtabmap::LabelLayout labelers = rtabmap::LabelLayout::parse("floor:2 things:4");
-	std::map<int, rtabmap::Signature> signatures = scene();
-	for(std::pair<const int, rtabmap::Signature> & node : signatures)
-	{
-		rtabmap::LabelRaster raster(10, -2, 0.05f, 1, 1);
-		raster.set(labelers, 0, 0, 0, 1);  // floor votes, things does not
-		node.second.sensorData().setGridLabelRaster(raster);
-	}
 	const std::map<int, rtabmap::Transform> poses = posesOfScene();
-	maps_->updateMapCaches(poses, /*memory=*/0, true, false, signatures);
+	maps_->updateMapCaches(poses, /*memory=*/0, true, false, scene());
 	maps_->publishMaps(poses, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
 	spinFor(std::chrono::milliseconds(100));
 
-	ASSERT_FALSE(things->empty());
-	EXPECT_TRUE(std::all_of(things->back().labels.begin(), things->back().labels.end(),
+	ASSERT_FALSE(labels->empty());
+	EXPECT_TRUE(std::all_of(labels->back().labels.begin(), labels->back().labels.end(),
 			[](uint8_t label) {return label == 255;})) << "never seen";
 }
 

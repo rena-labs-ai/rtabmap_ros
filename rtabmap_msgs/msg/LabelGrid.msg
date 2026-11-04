@@ -1,5 +1,6 @@
-# One labeler's labels (Grid/Labelers) on the map's cells, laid out as nav_msgs/OccupancyGrid.
-# What each label means is the labeler's (the model's), not rtabmap's.
+# The labels of rtabmap's label frames (label_frame<i>) on the map's cells (same header and
+# info), laid out as nav_msgs/OccupancyGrid. What each label means is
+# the model's, not rtabmap's.
 
 std_msgs/Header header
 nav_msgs/MapMetaData info

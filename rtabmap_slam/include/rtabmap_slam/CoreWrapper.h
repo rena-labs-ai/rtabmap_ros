@@ -221,6 +221,7 @@ private:
 	void globalPoseAsyncCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr globalPoseMsg);
 	void gpsFixAsyncCallback(const sensor_msgs::msg::NavSatFix::SharedPtr gpsFixMsg);
 	void envSensorAsyncCallback(const rtabmap_msgs::msg::EnvSensor::SharedPtr envSensorMsg);
+	void labelFrameCallback(const rtabmap_msgs::msg::RGBDImage::SharedPtr frameMsg, int camera);
 	void landmarkDetectionAsyncCallback(const rtabmap_msgs::msg::LandmarkDetection::SharedPtr landmarkDetection);
 	void landmarkDetectionsAsyncCallback(const rtabmap_msgs::msg::LandmarkDetections::SharedPtr landmarkDetections);
 #ifdef WITH_APRILTAG_MSGS
@@ -481,6 +482,14 @@ private:
 	rclcpp::Subscription<rtabmap_msgs::msg::EnvSensor>::SharedPtr envSensorAsyncSub_;
 	rtabmap::EnvSensors envSensors_;
 	UMutex envSensorMutex_;
+
+	/// Label frames (`label_frames` > 0): per camera topic `label_frame<i>`, a frame of depth
+	/// and one label per depth pixel, any rate. The newest of each camera since the last node,
+	/// placed in that node's base frame by odometry, becomes the node's label raster
+	/// (rtabmap::LocalGridMaker::createLabelRaster()).
+	std::vector<rclcpp::Subscription<rtabmap_msgs::msg::RGBDImage>::SharedPtr> labelFrameSubs_;
+	std::map<int, std::pair<rtabmap::SensorData, rclcpp::Time> > labelFrames_; ///< camera -> frame, its stamp
+	UMutex labelFramesMutex_;
 
 	rclcpp::CallbackGroup::SharedPtr landmarkCallbackGroup_;
 	rclcpp::Subscription<rtabmap_msgs::msg::LandmarkDetection>::SharedPtr landmarkDetectionSub_;
