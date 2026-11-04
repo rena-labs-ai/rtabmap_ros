@@ -61,7 +61,7 @@ set(msg_files
    "msg/EnvSensor.msg"
    "msg/CameraModel.msg"
    "msg/CameraModels.msg"
-   "msg/TimedOccupancyGrid.msg"
+   "msg/LastSeenGrid.msg"
    "msg/LabelGrid.msg"
 )
 

@@ -151,8 +151,8 @@ void MapsManager::init(rclcpp::Node & node, const std::string & name, bool)
 	latched_.insert(std::make_pair((void*)&gridMapPub_, false));
 	gridProbMapPub_ = node.create_publisher<nav_msgs::msg::OccupancyGrid>("grid_prob_map", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
 	latched_.insert(std::make_pair((void*)&gridProbMapPub_, false));
-	timedMapPub_ = node.create_publisher<rtabmap_msgs::msg::TimedOccupancyGrid>("map/timed", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
-	latched_.insert(std::make_pair((void*)&timedMapPub_, false));
+	lastSeenPub_ = node.create_publisher<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
+	latched_.insert(std::make_pair((void*)&lastSeenPub_, false));
 	node_ = &node;
 	mapPubOptions_ = pubOptions;
 	cloudMapPub_ = node.create_publisher<sensor_msgs::msg::PointCloud2>("cloud_map", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
@@ -1572,7 +1572,7 @@ void MapsManager::addLabels(int id, const rtabmap::SensorData & data)
 
 bool MapsManager::channelsSubscribed() const
 {
-	if(timedMapPub_ && timedMapPub_->get_subscription_count() != 0)
+	if(lastSeenPub_ && lastSeenPub_->get_subscription_count() != 0)
 	{
 		return true;
 	}
@@ -1676,7 +1676,7 @@ void MapsManager::publishChannels(const rclcpp::Time & stamp, const std::string 
 {
 	if(!channelsSubscribed())
 	{
-		latched_.at(&timedMapPub_) = false;
+		latched_.at(&lastSeenPub_) = false;
 		for(std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
 		{
 			objectMap->latched = false;
@@ -1702,21 +1702,20 @@ void MapsManager::publishChannels(const rclcpp::Time & stamp, const std::string 
 	info.origin.position.y = yMin;
 	info.origin.orientation.w = 1.0;
 
-	if(timedMapPub_->get_subscription_count() == 0)
+	if(lastSeenPub_->get_subscription_count() == 0)
 	{
-		latched_.at(&timedMapPub_) = false;
+		latched_.at(&lastSeenPub_) = false;
 	}
-	else if(gridUpdated_ || !latching_ || !latched_.at(&timedMapPub_))
+	else if(gridUpdated_ || !latching_ || !latched_.at(&lastSeenPub_))
 	{
-		rtabmap_msgs::msg::TimedOccupancyGrid msg;
+		rtabmap_msgs::msg::LastSeenGrid msg;
 		msg.header = header;
 		msg.info = info;
-		msg.data.assign((const int8_t*)occupancy.data, (const int8_t*)occupancy.data + size.area());
 		float nodesXMin=0.0f, nodesYMin=0.0f;
 		const cv::Mat nodes = occupancyGrid_->getLastNodeMap(nodesXMin, nodesYMin);
 		msg.last_seen = lastSeen(nodes, nodesXMin, nodesYMin, size, xMin, yMin, cellSize, nodeStamps_);
-		timedMapPub_->publish(msg);
-		latched_.at(&timedMapPub_) = true;
+		lastSeenPub_->publish(msg);
+		latched_.at(&lastSeenPub_) = true;
 	}
 	for(std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
 	{

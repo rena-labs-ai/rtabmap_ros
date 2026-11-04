@@ -40,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
-#include <rtabmap_msgs/msg/timed_occupancy_grid.hpp>
+#include <rtabmap_msgs/msg/last_seen_grid.hpp>
 #include <rtabmap_msgs/msg/label_grid.hpp>
 #ifdef WITH_GRID_MAP_ROS
 #include <grid_map_msgs/msg/grid_map.hpp>
@@ -259,8 +259,8 @@ private:
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudGroundPub_;
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudObstaclesPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridMapPub_;
-	/// map/timed: map with when each cell was last observed (see publishChannels()).
-	rclcpp::Publisher<rtabmap_msgs::msg::TimedOccupancyGrid>::SharedPtr timedMapPub_;
+	/// map/last_seen: when each cell of map was last observed (see publishChannels()).
+	rclcpp::Publisher<rtabmap_msgs::msg::LastSeenGrid>::SharedPtr lastSeenPub_;
 	std::map<int, double> nodeStamps_; ///< stamps of the nodes the cells were last observed by
 	rclcpp::Node * node_ = nullptr; ///< for the labelers' publishers, made with the parameters
 	rclcpp::PublisherOptions mapPubOptions_;

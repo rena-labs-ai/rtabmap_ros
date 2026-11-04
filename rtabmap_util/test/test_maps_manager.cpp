@@ -15,7 +15,7 @@ All rights reserved. (BSD-3-Clause, see the repository root.)
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <limits>
-#include <rtabmap_msgs/msg/timed_occupancy_grid.hpp>
+#include <rtabmap_msgs/msg/last_seen_grid.hpp>
 #include <rtabmap_msgs/msg/label_grid.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
@@ -535,19 +535,19 @@ int labelNear(const rtabmap_msgs::msg::LabelGrid & grid, double x, double y)
 	return 255;
 }
 
-TEST_F(MapsManagerTest, PublishesTheGridWithWhenEachCellWasLastSeen)
+TEST_F(MapsManagerTest, PublishesWhenEachCellOfTheMapWasLastSeen)
 {
 	start();
-	std::shared_ptr<Collector<rtabmap_msgs::msg::TimedOccupancyGrid>> timed =
-			collectFromMaps<rtabmap_msgs::msg::TimedOccupancyGrid>("map/timed");
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
 
 	const std::map<int, rtabmap::Transform> poses = posesOfScene();
 	maps_->updateMapCaches(poses, /*memory=*/0, true, false, scene());
 	maps_->publishMaps(poses, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
 	spinFor(std::chrono::milliseconds(100));
 
-	ASSERT_FALSE(timed->empty()) << "no map/timed published with only its subscriber";
-	const rtabmap_msgs::msg::TimedOccupancyGrid & map = timed->back();
+	ASSERT_FALSE(lastSeen->empty()) << "no map/last_seen published with only its subscriber";
+	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
 	EXPECT_EQ(map.header.frame_id, "map");
 	float xMin = 0.0f, yMin = 0.0f, cellSize = 0.0f;
 	const cv::Mat pixels = maps_->getGridMap(xMin, yMin, cellSize);
@@ -555,12 +555,10 @@ TEST_F(MapsManagerTest, PublishesTheGridWithWhenEachCellWasLastSeen)
 	ASSERT_EQ((int)map.info.height, pixels.rows);
 	EXPECT_NEAR(map.info.resolution, cellSize, 1e-6);
 	EXPECT_NEAR(map.info.origin.position.x, xMin, 1e-6);
-	ASSERT_EQ(map.data.size(), pixels.total());
 	ASSERT_EQ(map.last_seen.size(), pixels.total());
 	for(size_t i=0; i<pixels.total(); ++i)
 	{
-		EXPECT_EQ(map.data[i], pixels.at<signed char>(int(i))) << "cell " << i << ": /map's value";
-		EXPECT_EQ(std::isnan(map.last_seen[i]), map.data[i] == -1) << "cell " << i << ": a stamp exactly where observed";
+		EXPECT_EQ(std::isnan(map.last_seen[i]), pixels.at<signed char>(int(i)) == -1) << "cell " << i << ": a stamp exactly where /map observed";
 	}
 	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1001.0) << "node 1's obstacle: node 1's stamp";
 	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 3.0, -0.1)], 1002.0) << "node 2's obstacle: node 2's stamp";
