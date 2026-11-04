@@ -28,7 +28,6 @@ find_package(rtabmap_msgs REQUIRED)
 find_package(rtabmap_conversions REQUIRED)
 find_package(rtabmap_sync REQUIRED)
 
-find_package(RTABMap COMPONENTS gui REQUIRED)
 
 # Optional components
 find_package(octomap_msgs)
