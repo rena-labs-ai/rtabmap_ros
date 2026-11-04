@@ -151,10 +151,10 @@ void MapsManager::init(rclcpp::Node & node, const std::string & name, bool)
 	latched_.insert(std::make_pair((void*)&gridMapPub_, false));
 	gridProbMapPub_ = node.create_publisher<nav_msgs::msg::OccupancyGrid>("grid_prob_map", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
 	latched_.insert(std::make_pair((void*)&gridProbMapPub_, false));
-#ifdef WITH_GRID_MAP_ROS
-	channelsPub_ = node.create_publisher<grid_map_msgs::msg::GridMap>("map/channels", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
-	latched_.insert(std::make_pair((void*)&channelsPub_, false));
-#endif
+	timedMapPub_ = node.create_publisher<rtabmap_msgs::msg::TimedOccupancyGrid>("map/timed", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
+	latched_.insert(std::make_pair((void*)&timedMapPub_, false));
+	node_ = &node;
+	mapPubOptions_ = pubOptions;
 	cloudMapPub_ = node.create_publisher<sensor_msgs::msg::PointCloud2>("cloud_map", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
 	latched_.insert(std::make_pair((void*)&cloudMapPub_, false));
 	cloudObstaclesPub_ = node.create_publisher<sensor_msgs::msg::PointCloud2>("cloud_obstacles", rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), pubOptions);
@@ -274,9 +274,18 @@ void MapsManager::setParameters(const rtabmap::ParametersMap & parameters)
 	const LabelLayout & labelers = localMapMaker_->labelLayout();
 	for(int i=0; i<labelers.size(); ++i)
 	{
+		if(labelers.maxLabel(i) < 0)
+		{
+			continue; // 0 bits: an input only (Grid/GroundLabeler), no labels stored
+		}
 		std::unique_ptr<ObjectMap> objectMap(new ObjectMap);
 		objectMap->name = labelers.name(i);
+		objectMap->labeler = i;
 		objectMap->grid.reset(new ObjectGrid(&objectMap->cache, parameters_));
+		if(node_)
+		{
+			objectMap->pub = node_->create_publisher<rtabmap_msgs::msg::LabelGrid>("map/" + objectMap->name, rclcpp::QoS(1).reliable().durability(latching_?RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL:RMW_QOS_POLICY_DURABILITY_VOLATILE), mapPubOptions_);
+		}
 		objectMaps_.push_back(std::move(objectMap));
 	}
 
@@ -1551,7 +1560,7 @@ void MapsManager::addLabels(int id, const rtabmap::SensorData & data)
 		std::vector<cv::Vec3f> labelled;
 		if(!raster.empty())
 		{
-			raster.cells(labelers, (int)i, nothing, labelled);
+			raster.cells(labelers, objectMaps_[i]->labeler, nothing, labelled);
 		}
 		objectMaps_[i]->cache.add(id,
 				nothing.empty() ? cv::Mat() : cv::Mat(nothing, true).reshape(2, 1),
@@ -1563,11 +1572,18 @@ void MapsManager::addLabels(int id, const rtabmap::SensorData & data)
 
 bool MapsManager::channelsSubscribed() const
 {
-#ifdef WITH_GRID_MAP_ROS
-	return channelsPub_->get_subscription_count() != 0;
-#else
+	if(timedMapPub_ && timedMapPub_->get_subscription_count() != 0)
+	{
+		return true;
+	}
+	for(const std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
+	{
+		if(objectMap->pub && objectMap->pub->get_subscription_count() != 0)
+		{
+			return true;
+		}
+	}
 	return false;
-#endif
 }
 
 void MapsManager::rememberStamps(
@@ -1603,10 +1619,11 @@ void MapsManager::rememberStamps(
 
 namespace {
 
-/// `map` (`CV_8SC1` from xMin, yMin, -1 unknown) on the grid's cells, as floats (NaN unknown).
-cv::Mat onGrid(const cv::Mat & map, float xMin, float yMin, const cv::Size & gridSize, float gridXMin, float gridYMin, float cellSize)
+/// `map` (`CV_8SC1` labels from xMin, yMin, -1 never observed) on the grid's cells, row-major
+/// from its origin: 255 never observed.
+std::vector<uint8_t> labelsOnGrid(const cv::Mat & map, float xMin, float yMin, const cv::Size & gridSize, float gridXMin, float gridYMin, float cellSize)
 {
-	cv::Mat out(gridSize, CV_32FC1, cv::Scalar(std::numeric_limits<float>::quiet_NaN()));
+	std::vector<uint8_t> out(gridSize.area(), 255);
 	if(map.empty())
 	{
 		return out;
@@ -1621,18 +1638,18 @@ cv::Mat onGrid(const cv::Mat & map, float xMin, float yMin, const cv::Size & gri
 			const signed char value = map.at<signed char>(row-offset.y, col-offset.x);
 			if(value >= 0)
 			{
-				out.at<float>(row, col) = value;
+				out[row*gridSize.width + col] = (uint8_t)value;
 			}
 		}
 	}
 	return out;
 }
 
-/// `nodes` (`CV_32SC1` node ids from xMin, yMin) on the grid's cells, as seconds before `now`
-/// those nodes were stamped (NaN: no node).
-cv::Mat ages(const cv::Mat & nodes, float xMin, float yMin, const cv::Size & gridSize, float gridXMin, float gridYMin, float cellSize, const std::map<int, double> & stamps, double now)
+/// `nodes` (`CV_32SC1` node ids from xMin, yMin) on the grid's cells, row-major from its
+/// origin, as those nodes' stamps (NaN: no node).
+std::vector<double> lastSeen(const cv::Mat & nodes, float xMin, float yMin, const cv::Size & gridSize, float gridXMin, float gridYMin, float cellSize, const std::map<int, double> & stamps)
 {
-	cv::Mat out(gridSize, CV_32FC1, cv::Scalar(std::numeric_limits<float>::quiet_NaN()));
+	std::vector<double> out(gridSize.area(), std::numeric_limits<double>::quiet_NaN());
 	if(nodes.empty())
 	{
 		return out;
@@ -1646,7 +1663,7 @@ cv::Mat ages(const cv::Mat & nodes, float xMin, float yMin, const cv::Size & gri
 			std::map<int, double>::const_iterator stamp = stamps.find(nodes.at<int>(row-offset.y, col-offset.x));
 			if(stamp != stamps.end())
 			{
-				out.at<float>(row, col) = float(now - stamp->second);
+				out[row*gridSize.width + col] = stamp->second;
 			}
 		}
 	}
@@ -1657,19 +1674,13 @@ cv::Mat ages(const cv::Mat & nodes, float xMin, float yMin, const cv::Size & gri
 
 void MapsManager::publishChannels(const rclcpp::Time & stamp, const std::string & mapFrameId)
 {
-#ifdef WITH_GRID_MAP_ROS
-	if(channelsPub_->get_subscription_count() == 0)
+	if(!channelsSubscribed())
 	{
-		latched_.at(&channelsPub_) = false;
-		return;
-	}
-	bool updated = gridUpdated_;
-	for(const std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
-	{
-		updated = updated || objectMap->updated;
-	}
-	if(!updated && latching_ && latched_.at(&channelsPub_))
-	{
+		latched_.at(&timedMapPub_) = false;
+		for(std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
+		{
+			objectMap->latched = false;
+		}
 		return;
 	}
 	float xMin=0.0f, yMin=0.0f, cellSize = 0.05f;
@@ -1678,47 +1689,55 @@ void MapsManager::publishChannels(const rclcpp::Time & stamp, const std::string 
 	{
 		return;
 	}
+	// every map/* of one update on the same cells: /map's
 	const cv::Size size = occupancy.size();
-	const double now = stamp.seconds();
-	grid_map::GridMap channels;
-	channels.setFrameId(mapFrameId);
-	channels.setTimestamp(stamp.nanoseconds());
-	channels.setGeometry(
-			grid_map::Length(size.width * cellSize, size.height * cellSize),
-			cellSize,
-			grid_map::Position(xMin + size.width * cellSize / 2.0f, yMin + size.height * cellSize / 2.0f));
-	// `cells` (`CV_32FC1` on the grid map's cells, row y, column x, from xMin, yMin) as a channel:
-	// grid_map indexes from the cell at the largest x and y.
-	const auto add = [&](const std::string & name, const cv::Mat & cells)
+	std_msgs::msg::Header header;
+	header.frame_id = mapFrameId;
+	header.stamp = stamp;
+	nav_msgs::msg::MapMetaData info;
+	info.resolution = cellSize;
+	info.width = size.width;
+	info.height = size.height;
+	info.origin.position.x = xMin;
+	info.origin.position.y = yMin;
+	info.origin.orientation.w = 1.0;
+
+	if(timedMapPub_->get_subscription_count() == 0)
 	{
-		channels.add(name);
-		grid_map::Matrix & matrix = channels[name];
-		for(int row=0; row<size.height; ++row)
-		{
-			for(int col=0; col<size.width; ++col)
-			{
-				matrix(size.width-1-col, size.height-1-row) = cells.at<float>(row, col);
-			}
-		}
-	};
-	float nodesXMin=0.0f, nodesYMin=0.0f;
-	add("occupancy", onGrid(occupancy, xMin, yMin, size, xMin, yMin, cellSize));
-	cv::Mat nodes = occupancyGrid_->getLastNodeMap(nodesXMin, nodesYMin);
-	add("occupancy_age", ages(nodes, nodesXMin, nodesYMin, size, xMin, yMin, cellSize, nodeStamps_, now));
-	for(const std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
-	{
-		float objectXMin=0.0f, objectYMin=0.0f;
-		const cv::Mat objects = objectMap->grid->getMap(objectXMin, objectYMin);
-		add(objectMap->name, onGrid(objects, objectXMin, objectYMin, size, xMin, yMin, cellSize));
-		nodes = objectMap->grid->getLastNodeMap(nodesXMin, nodesYMin);
-		add(objectMap->name + "_age", ages(nodes, nodesXMin, nodesYMin, size, xMin, yMin, cellSize, nodeStamps_, now));
+		latched_.at(&timedMapPub_) = false;
 	}
-	channelsPub_->publish(*grid_map::GridMapRosConverter::toMessage(channels));
-	latched_.at(&channelsPub_) = true;
-#else
-	(void)stamp;
-	(void)mapFrameId;
-#endif
+	else if(gridUpdated_ || !latching_ || !latched_.at(&timedMapPub_))
+	{
+		rtabmap_msgs::msg::TimedOccupancyGrid msg;
+		msg.header = header;
+		msg.info = info;
+		msg.data.assign((const int8_t*)occupancy.data, (const int8_t*)occupancy.data + size.area());
+		float nodesXMin=0.0f, nodesYMin=0.0f;
+		const cv::Mat nodes = occupancyGrid_->getLastNodeMap(nodesXMin, nodesYMin);
+		msg.last_seen = lastSeen(nodes, nodesXMin, nodesYMin, size, xMin, yMin, cellSize, nodeStamps_);
+		timedMapPub_->publish(msg);
+		latched_.at(&timedMapPub_) = true;
+	}
+	for(std::unique_ptr<ObjectMap> & objectMap : objectMaps_)
+	{
+		if(objectMap->pub->get_subscription_count() == 0)
+		{
+			objectMap->latched = false;
+			continue;
+		}
+		if(!gridUpdated_ && !objectMap->updated && latching_ && objectMap->latched)
+		{
+			continue;
+		}
+		float objectXMin=0.0f, objectYMin=0.0f;
+		const cv::Mat labels = objectMap->grid->getMap(objectXMin, objectYMin);
+		rtabmap_msgs::msg::LabelGrid msg;
+		msg.header = header;
+		msg.info = info;
+		msg.labels = labelsOnGrid(labels, objectXMin, objectYMin, size, xMin, yMin, cellSize);
+		objectMap->pub->publish(msg);
+		objectMap->latched = true;
+	}
 }
 
 cv::Mat MapsManager::getGridMap(

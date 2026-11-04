@@ -15,8 +15,8 @@ All rights reserved. (BSD-3-Clause, see the repository root.)
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <limits>
-#include <grid_map_msgs/msg/grid_map.hpp>
-#include <grid_map_ros/GridMapRosConverter.hpp>
+#include <rtabmap_msgs/msg/timed_occupancy_grid.hpp>
+#include <rtabmap_msgs/msg/label_grid.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <algorithm>
@@ -508,62 +508,75 @@ TEST_F(MapsManagerTest, PublishesTheOccupancyGrid)
 	EXPECT_EQ(cellAt(map, 0.5, -0.1), 0) << "node 1's ground";
 }
 
-TEST_F(MapsManagerTest, PublishesTheGridAndWhenEachCellWasSeenAsChannels)
+/// The row-major index of the cell at (@p x, @p y) of a grid laid out by @p info, -1 outside.
+int cellIndex(const nav_msgs::msg::MapMetaData & info, double x, double y)
+{
+	const int col = (int)std::floor((x - info.origin.position.x) / info.resolution);
+	const int row = (int)std::floor((y - info.origin.position.y) / info.resolution);
+	return col < 0 || row < 0 || col >= (int)info.width || row >= (int)info.height ? -1 : row * (int)info.width + col;
+}
+
+/// The label at (@p x, @p y) or a neighbouring cell (an object grid's cells are whole cells
+/// from the world origin, the map's are not), 255 for none.
+int labelNear(const rtabmap_msgs::msg::LabelGrid & grid, double x, double y)
+{
+	const double cell = grid.info.resolution;
+	for(const double dx : {0.0, -cell, cell})
+	{
+		for(const double dy : {0.0, -cell, cell})
+		{
+			const int i = cellIndex(grid.info, x + dx, y + dy);
+			if(i >= 0 && grid.labels[i] != 255)
+			{
+				return grid.labels[i];
+			}
+		}
+	}
+	return 255;
+}
+
+TEST_F(MapsManagerTest, PublishesTheGridWithWhenEachCellWasLastSeen)
 {
 	start();
-	std::shared_ptr<Collector<grid_map_msgs::msg::GridMap>> layers =
-			collectFromMaps<grid_map_msgs::msg::GridMap>("map/channels");
+	std::shared_ptr<Collector<rtabmap_msgs::msg::TimedOccupancyGrid>> timed =
+			collectFromMaps<rtabmap_msgs::msg::TimedOccupancyGrid>("map/timed");
 
 	const std::map<int, rtabmap::Transform> poses = posesOfScene();
 	maps_->updateMapCaches(poses, /*memory=*/0, true, false, scene());
 	maps_->publishMaps(poses, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
 	spinFor(std::chrono::milliseconds(100));
 
-	ASSERT_FALSE(layers->empty()) << "no channels published with only their subscriber";
-	grid_map::GridMap map;
-	ASSERT_TRUE(grid_map::GridMapRosConverter::fromMessage(layers->back(), map));
-	EXPECT_EQ(map.getFrameId(), "map");
-	ASSERT_TRUE(map.exists("occupancy"));
-	ASSERT_TRUE(map.exists("occupancy_age"));
+	ASSERT_FALSE(timed->empty()) << "no map/timed published with only its subscriber";
+	const rtabmap_msgs::msg::TimedOccupancyGrid & map = timed->back();
+	EXPECT_EQ(map.header.frame_id, "map");
 	float xMin = 0.0f, yMin = 0.0f, cellSize = 0.0f;
 	const cv::Mat pixels = maps_->getGridMap(xMin, yMin, cellSize);
-	ASSERT_EQ(map.getSize()(0), pixels.cols) << "x";
-	ASSERT_EQ(map.getSize()(1), pixels.rows) << "y";
-	EXPECT_NEAR(map.getResolution(), cellSize, 1e-6);
-	const auto at = [&](const std::string & layer, double x, double y) {
-		return map.atPosition(layer, grid_map::Position(x, y));
-	};
-	for(int row=0; row<pixels.rows; ++row)
+	ASSERT_EQ((int)map.info.width, pixels.cols);
+	ASSERT_EQ((int)map.info.height, pixels.rows);
+	EXPECT_NEAR(map.info.resolution, cellSize, 1e-6);
+	EXPECT_NEAR(map.info.origin.position.x, xMin, 1e-6);
+	ASSERT_EQ(map.data.size(), pixels.total());
+	ASSERT_EQ(map.last_seen.size(), pixels.total());
+	for(size_t i=0; i<pixels.total(); ++i)
 	{
-		for(int col=0; col<pixels.cols; ++col)
-		{
-			const double x = xMin + (col + 0.5) * cellSize, y = yMin + (row + 0.5) * cellSize;
-			const signed char pixel = pixels.at<signed char>(row, col);
-			const float occupancy = at("occupancy", x, y);
-			if(pixel == -1)
-			{
-				EXPECT_TRUE(std::isnan(occupancy)) << "cell (" << col << ", " << row << ")";
-			}
-			else
-			{
-				EXPECT_EQ(occupancy, float(pixel)) << "cell (" << col << ", " << row << "): /map's value";
-			}
-			EXPECT_EQ(std::isnan(at("occupancy_age", x, y)), std::isnan(occupancy))
-					<< "cell (" << col << ", " << row << "): an age exactly where observed";
-		}
+		EXPECT_EQ(map.data[i], pixels.at<signed char>(int(i))) << "cell " << i << ": /map's value";
+		EXPECT_EQ(std::isnan(map.last_seen[i]), map.data[i] == -1) << "cell " << i << ": a stamp exactly where observed";
 	}
-	EXPECT_FLOAT_EQ(at("occupancy_age", 1.0, 0.0), 9.0f) << "node 1 (stamp 1001)'s obstacle";
-	EXPECT_FLOAT_EQ(at("occupancy_age", 3.0, -0.1), 8.0f) << "node 2 (stamp 1002)'s obstacle";
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1001.0) << "node 1's obstacle: node 1's stamp";
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 3.0, -0.1)], 1002.0) << "node 2's obstacle: node 2's stamp";
 }
 
-TEST_F(MapsManagerTest, EachLabelerIsAChannelWithItsAges)
+TEST_F(MapsManagerTest, EachLabelerIsALabelGridOnTheMapsCells)
 {
 	start({}, {{rtabmap::Parameters::kGridLabelers(), "floor:2 things:4"}});
-	std::shared_ptr<Collector<grid_map_msgs::msg::GridMap>> layers =
-			collectFromMaps<grid_map_msgs::msg::GridMap>("map/channels");
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> floor =
+			collectFromMaps<rtabmap_msgs::msg::LabelGrid>("map/floor");
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> things =
+			collect<rtabmap_msgs::msg::LabelGrid>(topic("map/things"));
+	ASSERT_TRUE(waitForPublisher(things->subscription));
 
-	// The scene, its nodes each seeing, by its own pose's obstacle, a thing labelled 3 on
-	// what the floor labeler calls 1.
+	// Each node sees, by its own pose's obstacle, a thing labelled 3 on what the floor
+	// labeler calls 1.
 	const rtabmap::LabelLayout labelers = rtabmap::LabelLayout::parse("floor:2 things:4");
 	std::map<int, rtabmap::Signature> signatures = scene();
 	for(std::pair<const int, rtabmap::Signature> & node : signatures)
@@ -578,42 +591,33 @@ TEST_F(MapsManagerTest, EachLabelerIsAChannelWithItsAges)
 	maps_->publishMaps(poses, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
 	spinFor(std::chrono::milliseconds(100));
 
-	ASSERT_FALSE(layers->empty());
-	grid_map::GridMap map;
-	ASSERT_TRUE(grid_map::GridMapRosConverter::fromMessage(layers->back(), map));
-	ASSERT_TRUE(map.exists("floor"));
-	ASSERT_TRUE(map.exists("things"));
-	ASSERT_TRUE(map.exists("things_age"));
-	// The object grid's cells are whole cells from the world origin, the grid map's are
-	// not: a cell lands within one cell of where it was seen.
-	const double cellSize = map.getResolution();
-	const auto near = [&](const std::string & channel, double x, double y) {
-		for(const double dx : {0.0, -cellSize, cellSize})
-		{
-			for(const double dy : {0.0, -cellSize, cellSize})
-			{
-				const float value = map.atPosition(channel, grid_map::Position(x + dx, y + dy));
-				if(!std::isnan(value))
-				{
-					return value;
-				}
-			}
-		}
-		return std::numeric_limits<float>::quiet_NaN();
-	};
-	EXPECT_EQ(near("floor", 0.5, -0.1), 1.0f) << "node 1's floor labeler";
-	EXPECT_EQ(near("things", 0.5, -0.1), 3.0f) << "node 1's thing";
-	EXPECT_EQ(near("things", 2.5, -0.1), 3.0f) << "node 2's thing";
-	EXPECT_FLOAT_EQ(near("things_age", 0.5, -0.1), 9.0f) << "node 1 (stamp 1001)";
-	EXPECT_FLOAT_EQ(near("things_age", 2.5, -0.1), 8.0f) << "node 2 (stamp 1002)";
-	EXPECT_TRUE(std::isnan(near("things", 1.5, 0.1))) << "never seen";
+	ASSERT_FALSE(floor->empty());
+	ASSERT_FALSE(things->empty());
+	float xMin = 0.0f, yMin = 0.0f, cellSize = 0.0f;
+	const cv::Mat pixels = maps_->getGridMap(xMin, yMin, cellSize);
+	EXPECT_EQ((int)things->back().info.width, pixels.cols) << "the map's cells";
+	EXPECT_EQ(things->back().labels.size(), pixels.total());
+	EXPECT_EQ(things->back().header.stamp, floor->back().header.stamp) << "one update, one stamp";
+	EXPECT_EQ(labelNear(floor->back(), 0.5, -0.1), 1) << "node 1's floor labeler";
+	EXPECT_EQ(labelNear(things->back(), 0.5, -0.1), 3) << "node 1's thing";
+	EXPECT_EQ(labelNear(things->back(), 2.5, -0.1), 3) << "node 2's thing";
+	EXPECT_EQ(labelNear(things->back(), 1.5, 0.1), 255) << "never seen";
 }
 
-TEST_F(MapsManagerTest, ALabelerThatHasNotVotedIsANeverSeenChannel)
+TEST_F(MapsManagerTest, ALabelerOfZeroBitsHasNoLabelGrid)
+{
+	start({}, {{rtabmap::Parameters::kGridLabelers(), "floor:0 things:4"}});
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> things =
+			collectFromMaps<rtabmap_msgs::msg::LabelGrid>("map/things");
+	EXPECT_EQ(node_->count_publishers(topic("map/floor")), 0u) << "an input only: nothing to publish";
+	EXPECT_EQ(node_->count_publishers(topic("map/things")), 1u);
+}
+
+TEST_F(MapsManagerTest, ALabelerThatHasNotVotedIsNeverSeen)
 {
 	start({}, {{rtabmap::Parameters::kGridLabelers(), "floor:2 things:4"}});
-	std::shared_ptr<Collector<grid_map_msgs::msg::GridMap>> layers =
-			collectFromMaps<grid_map_msgs::msg::GridMap>("map/channels");
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LabelGrid>> things =
+			collectFromMaps<rtabmap_msgs::msg::LabelGrid>("map/things");
 
 	const rtabmap::LabelLayout labelers = rtabmap::LabelLayout::parse("floor:2 things:4");
 	std::map<int, rtabmap::Signature> signatures = scene();
@@ -628,13 +632,9 @@ TEST_F(MapsManagerTest, ALabelerThatHasNotVotedIsANeverSeenChannel)
 	maps_->publishMaps(poses, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
 	spinFor(std::chrono::milliseconds(100));
 
-	ASSERT_FALSE(layers->empty());
-	grid_map::GridMap map;
-	ASSERT_TRUE(grid_map::GridMapRosConverter::fromMessage(layers->back(), map));
-	ASSERT_TRUE(map.exists("things"));
-	ASSERT_TRUE(map.exists("things_age"));
-	EXPECT_TRUE(map["things"].array().isNaN().all()) << "never seen";
-	EXPECT_TRUE(map["things_age"].array().isNaN().all());
+	ASSERT_FALSE(things->empty());
+	EXPECT_TRUE(std::all_of(things->back().labels.begin(), things->back().labels.end(),
+			[](uint8_t label) {return label == 255;})) << "never seen";
 }
 
 TEST_F(MapsManagerTest, CellSizeParameterChangesTheResolution)

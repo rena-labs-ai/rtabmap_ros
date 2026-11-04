@@ -40,6 +40,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <rtabmap_msgs/msg/timed_occupancy_grid.hpp>
+#include <rtabmap_msgs/msg/label_grid.hpp>
 #ifdef WITH_GRID_MAP_ROS
 #include <grid_map_msgs/msg/grid_map.hpp>
 #endif
@@ -257,11 +259,11 @@ private:
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudGroundPub_;
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudObstaclesPub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridMapPub_;
-#ifdef WITH_GRID_MAP_ROS
-	/// map/channels: the grid map with every label grid on its cells (see publishChannels()).
-	rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr channelsPub_;
-#endif
-	std::map<int, double> nodeStamps_; ///< stamps of the nodes the channels' ages refer to
+	/// map/timed: map with when each cell was last observed (see publishChannels()).
+	rclcpp::Publisher<rtabmap_msgs::msg::TimedOccupancyGrid>::SharedPtr timedMapPub_;
+	std::map<int, double> nodeStamps_; ///< stamps of the nodes the cells were last observed by
+	rclcpp::Node * node_ = nullptr; ///< for the labelers' publishers, made with the parameters
+	rclcpp::PublisherOptions mapPubOptions_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gridProbMapPub_;
 #ifdef RTABMAP_OCTOMAP
 #ifdef WITH_OCTOMAP_MSGS
@@ -296,15 +298,19 @@ private:
 
 	/// One labeler (Grid/Labelers): its labels in the nodes' label rasters
 	/// (rtabmap::SensorData::gridLabelRaster()), assembled into an rtabmap::ObjectGrid,
-	/// published as the channel <name> of map/channels.
+	/// published on map/<name> (rtabmap_msgs/LabelGrid). A labeler of 0 bits stores no labels
+	/// and has none.
 	struct ObjectMap
 	{
 		std::string name;
+		int labeler = 0; ///< its index in Grid/Labelers
+		rclcpp::Publisher<rtabmap_msgs::msg::LabelGrid>::SharedPtr pub;
+		bool latched = false;
 		rtabmap::LocalGridCache cache;
 		std::unique_ptr<rtabmap::ObjectGrid> grid;
 		bool updated = false;
 	};
-	/// Grid/Labelers' labelers in order: labeler i is objectMaps_[i].
+	/// Grid/Labelers' labelers that store labels, in order.
 	std::vector<std::unique_ptr<ObjectMap> > objectMaps_;
 	void addLabels(int id, const rtabmap::SensorData & data);
 
