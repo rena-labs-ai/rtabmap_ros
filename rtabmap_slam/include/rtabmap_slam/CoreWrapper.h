@@ -54,6 +54,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <rtabmap/core/OdometryInfo.h>
 
 #include "rtabmap_msgs/srv/get_node_data.hpp"
+#include "rtabmap_msgs/srv/keep_node_data.hpp"
+#include "rtabmap_msgs/srv/release_node_data.hpp"
 #include "rtabmap_msgs/srv/get_map.hpp"
 #include "rtabmap_msgs/srv/get_map2.hpp"
 #include "rtabmap_msgs/srv/list_labels.hpp"
@@ -293,6 +295,8 @@ private:
 	void setLogWarn(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<std_srvs::srv::Empty::Request>, std::shared_ptr<std_srvs::srv::Empty::Response>);
 	void setLogError(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<std_srvs::srv::Empty::Request>, std::shared_ptr<std_srvs::srv::Empty::Response>);
 	void getNodeDataCallback(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<rtabmap_msgs::srv::GetNodeData::Request>, std::shared_ptr<rtabmap_msgs::srv::GetNodeData::Response>);
+	void keepNodeDataCallback(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<rtabmap_msgs::srv::KeepNodeData::Request>, std::shared_ptr<rtabmap_msgs::srv::KeepNodeData::Response>);
+	void releaseNodeDataCallback(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<rtabmap_msgs::srv::ReleaseNodeData::Request>, std::shared_ptr<rtabmap_msgs::srv::ReleaseNodeData::Response>);
 	void getMapDataCallback(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<rtabmap_msgs::srv::GetMap::Request>, std::shared_ptr<rtabmap_msgs::srv::GetMap::Response>);
 	void getMapData2Callback(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<rtabmap_msgs::srv::GetMap2::Request>, std::shared_ptr<rtabmap_msgs::srv::GetMap2::Response>);
 	void getMapCallback(const std::shared_ptr<rmw_request_id_t>, const std::shared_ptr<nav_msgs::srv::GetMap::Request>, std::shared_ptr<nav_msgs::srv::GetMap::Response>);
@@ -433,6 +437,8 @@ private:
 	rclcpp::Service<std_srvs::srv::Empty>::SharedPtr setLogWarnSrv_;
 	rclcpp::Service<std_srvs::srv::Empty>::SharedPtr setLogErrorSrv_;
 	rclcpp::Service<rtabmap_msgs::srv::GetNodeData>::SharedPtr getNodeDataSrv_;
+	rclcpp::Service<rtabmap_msgs::srv::KeepNodeData>::SharedPtr keepNodeDataSrv_;
+	rclcpp::Service<rtabmap_msgs::srv::ReleaseNodeData>::SharedPtr releaseNodeDataSrv_;
 	rclcpp::Service<rtabmap_msgs::srv::GetMap>::SharedPtr getMapDataSrv_;
 	rclcpp::Service<rtabmap_msgs::srv::GetMap2>::SharedPtr getMapData2Srv_;
 	rclcpp::Service<nav_msgs::srv::GetMap>::SharedPtr getMapSrv_;
