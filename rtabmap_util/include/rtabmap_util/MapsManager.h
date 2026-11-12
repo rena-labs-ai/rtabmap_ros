@@ -259,7 +259,7 @@ private:
 			const std::map<int, rtabmap::Transform> & poses,
 			const rtabmap::Memory * memory,
 			const std::map<int, rtabmap::Signature> & signatures);
-	void publishLastSeen(const rclcpp::Time & stamp, const std::string & mapFrameId);
+	void publishLastSeen(const std::map<int, rtabmap::Transform> & poses, const rclcpp::Time & stamp, const std::string & mapFrameId);
 #ifdef RTABMAP_OCTOMAP
 #ifdef WITH_OCTOMAP_MSGS
 	rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr octoMapPubBin_;

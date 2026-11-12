@@ -1430,7 +1430,7 @@ void MapsManager::publishMaps(
 	{
 		latched_.at(&gridProbMapPub_) = false;
 	}
-	publishLastSeen(stamp, mapFrameId);
+	publishLastSeen(poses, stamp, mapFrameId);
 #if defined(WITH_GRID_MAP_ROS) and defined(RTABMAP_GRIDMAP)
 	if( elevationMapUpdated_ ||
 		!latching_ ||
@@ -1528,7 +1528,7 @@ std::vector<double> lastSeen(const cv::Mat & nodes, float xMin, float yMin, cons
 
 } // namespace
 
-void MapsManager::publishLastSeen(const rclcpp::Time & stamp, const std::string & mapFrameId)
+void MapsManager::publishLastSeen(const std::map<int, rtabmap::Transform> & poses, const rclcpp::Time & stamp, const std::string & mapFrameId)
 {
 	if(lastSeenPub_->get_subscription_count() == 0)
 	{
@@ -1558,6 +1558,30 @@ void MapsManager::publishLastSeen(const rclcpp::Time & stamp, const std::string 
 	float nodesXMin=0.0f, nodesYMin=0.0f;
 	const cv::Mat nodes = occupancyGrid_->getLastNodeMap(nodesXMin, nodesYMin);
 	msg.last_seen = lastSeen(nodes, nodesXMin, nodesYMin, occupancy.size(), xMin, yMin, cellSize, nodeStamps_);
+	// map_always_update: the live frame (node 0) votes into the grid on every update, but the
+	// grid keeps only real nodes (> 0) per cell, so the cells it sees would keep the time of the
+	// last keyframe that saw them while the robot is parked or turning slowly. They are stamped
+	// here with the update's stamp, so last-seen moves when the map does.
+	const std::map<int, rtabmap::Transform>::const_iterator live = poses.find(0);
+	const std::map<int, rtabmap::LocalGrid>::const_iterator liveGrid = localMaps_.localGrids().find(0);
+	if(alwaysUpdateMap_ && live != poses.end() && !live->second.isNull() && liveGrid != localMaps_.localGrids().end())
+	{
+		const double now = stamp.seconds();
+		for(const cv::Mat * cells : {&liveGrid->second.groundCells, &liveGrid->second.obstacleCells, &liveGrid->second.emptyCells})
+		{
+			for(int i=0; i<cells->cols; ++i)
+			{
+				const float * p = cells->ptr<float>(0, i);
+				const cv::Point3f pt = rtabmap::util3d::transformPoint(cv::Point3f(p[0], p[1], 0.0f), live->second);
+				const int col = (pt.x - xMin) / cellSize;
+				const int row = (pt.y - yMin) / cellSize;
+				if(col >= 0 && row >= 0 && col < occupancy.cols && row < occupancy.rows)
+				{
+					msg.last_seen[row*occupancy.cols + col] = now;
+				}
+			}
+		}
+	}
 	lastSeenPub_->publish(msg);
 	latched_.at(&lastSeenPub_) = true;
 }
