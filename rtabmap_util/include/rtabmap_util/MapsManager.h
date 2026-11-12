@@ -255,11 +255,12 @@ private:
 	/// map/last_seen: when each cell of map was last observed (publishLastSeen()).
 	rclcpp::Publisher<rtabmap_msgs::msg::LastSeenGrid>::SharedPtr lastSeenPub_;
 	std::map<int, double> nodeStamps_; ///< stamps of the nodes the cells were last observed by
+	std::vector<cv::Point2f> liveCells_; ///< map-frame cells the live frame (node 0) saw on the last update
 	void rememberStamps(
 			const std::map<int, rtabmap::Transform> & poses,
 			const rtabmap::Memory * memory,
 			const std::map<int, rtabmap::Signature> & signatures);
-	void publishLastSeen(const std::map<int, rtabmap::Transform> & poses, const rclcpp::Time & stamp, const std::string & mapFrameId);
+	void publishLastSeen(const rclcpp::Time & stamp, const std::string & mapFrameId);
 #ifdef RTABMAP_OCTOMAP
 #ifdef WITH_OCTOMAP_MSGS
 	rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr octoMapPubBin_;
