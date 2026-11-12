@@ -543,6 +543,31 @@ TEST_F(MapsManagerTest, PublishesWhenEachCellOfTheMapWasLastSeen)
 	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 3.0, -0.1)], 1002.0) << "node 2's obstacle: node 2's stamp";
 }
 
+TEST_F(MapsManagerTest, LastSeenStampsTheCellsTheLiveFrameSees)
+{
+	// map_always_update: the live frame (node 0) votes into the grid on every update but is no node
+	// of the grid's own record, so the cells it sees take the update's stamp in map/last_seen
+	start({rclcpp::Parameter("map_always_update", true),
+		   rclcpp::Parameter("map_empty_ray_tracing", false)});
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+
+	std::map<int, rtabmap::Signature> signatures = scene();
+	signatures.insert(std::make_pair(0, makeGridSignature(0, rtabmap::Transform(),
+			{}, {cv::Point3f(1.0f, 0.0f, 0.0f)})));  // node 1's obstacle, seen again
+	std::map<int, rtabmap::Transform> poses = posesOfScene();
+	poses.insert(std::make_pair(0, rtabmap::Transform::getIdentity()));
+	const std::map<int, rtabmap::Transform> filtered =
+			maps_->updateMapCaches(poses, /*memory=*/0, true, false, signatures);
+	maps_->publishMaps(filtered, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
+	spinFor(std::chrono::milliseconds(100));
+
+	ASSERT_FALSE(lastSeen->empty());
+	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1010.0) << "seen by the live frame: the update's stamp";
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 3.0, -0.1)], 1002.0) << "out of the live frame: node 2's stamp";
+}
+
 TEST_F(MapsManagerTest, CellSizeParameterChangesTheResolution)
 {
 	rtabmap::ParametersMap parameters;
