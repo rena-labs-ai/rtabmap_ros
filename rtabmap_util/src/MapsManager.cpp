@@ -263,6 +263,7 @@ void MapsManager::setParameters(const rtabmap::ParametersMap & parameters)
 	parameters_ = parameters;
 	delete occupancyGrid_;
 	occupancyGrid_ = new OccupancyGrid(&localMaps_, parameters_);
+	liveStamps_ = cv::Mat();
 	localMapMaker_->parseParameters(parameters_);
 
 #ifdef RTABMAP_OCTOMAP
@@ -290,6 +291,7 @@ void MapsManager::set2DMap(
 		return;
 	}
 	occupancyGrid_->setMap(map, xMin, yMin, cellSize, poses);
+	liveStamps_ = cv::Mat();
 	//update cache in case the map should be updated
 	if(memory && 
 		uStrNumCmp(memory->getDatabaseVersion(), "0.11.10")>=0 && // versions 0.11.10+ have local grids saved in db
@@ -338,6 +340,8 @@ void MapsManager::clear()
 	obstacleClouds_.clear();
 	occupancyGrid_->clear();
 	nodeStamps_.clear();
+	liveCells_.clear();
+	liveStamps_ = cv::Mat();
 
 #ifdef RTABMAP_OCTOMAP
 	octomap_->clear();
@@ -672,11 +676,37 @@ std::map<int, rtabmap::Transform> MapsManager::updateMapCaches(
 
 		if(updateGrid)
 		{
+			if(occupancyGrid_->fullUpdateNeeded(filteredPoses))
+			{
+				// the grid is re-assembled from the nodes only: the cells the live frame saw are gone
+				liveStamps_ = cv::Mat();
+			}
 			gridUpdated_ = occupancyGrid_->update(filteredPoses);
 		}
+		liveCells_.clear();
 		if(lastSeenPub_->get_subscription_count() != 0)
 		{
 			rememberStamps(filteredPoses, memory, signatures);
+			// map_always_update keeps the live frame (node 0) in the grid, but the grid records only
+			// real nodes (> 0) per cell, so the cells it sees would keep the time of the last keyframe
+			// that saw them. Its grid (cached as -1) is dropped below, so its cells are kept here for
+			// publishLastSeen() to stamp with the update's time.
+			const std::map<int, Transform>::const_iterator live = filteredPoses.find(0);
+			const std::map<int, LocalGrid>::const_iterator liveGrid = localMaps_.find(-1);
+			if(live != filteredPoses.end() && liveGrid != localMaps_.end())
+			{
+				for(const cv::Mat * cells : {&liveGrid->second.groundCells, &liveGrid->second.obstacleCells, &liveGrid->second.emptyCells})
+				{
+					// as OccupancyGrid::assemble(): 2 and 5 channels are 2D cells, the others carry their z
+					const bool is3D = cells->channels() != 2 && cells->channels() != 5;
+					for(int i=0; i<cells->cols; ++i)
+					{
+						const float * p = cells->ptr<float>(0, i);
+						const cv::Point3f pt = util3d::transformPoint(cv::Point3f(p[0], p[1], is3D?p[2]:0.0f), live->second);
+						liveCells_.push_back(cv::Point2f(pt.x, pt.y));
+					}
+				}
+			}
 		}
 
 #ifdef RTABMAP_OCTOMAP
@@ -1533,6 +1563,8 @@ void MapsManager::publishLastSeen(const rclcpp::Time & stamp, const std::string 
 	if(lastSeenPub_->get_subscription_count() == 0)
 	{
 		latched_.at(&lastSeenPub_) = false;
+		liveCells_.clear();
+		liveStamps_ = cv::Mat(); // not kept up to date without a subscriber
 		return;
 	}
 	if(!gridUpdated_ && latching_ && latched_.at(&lastSeenPub_))
@@ -1558,6 +1590,42 @@ void MapsManager::publishLastSeen(const rclcpp::Time & stamp, const std::string 
 	float nodesXMin=0.0f, nodesYMin=0.0f;
 	const cv::Mat nodes = occupancyGrid_->getLastNodeMap(nodesXMin, nodesYMin);
 	msg.last_seen = lastSeen(nodes, nodesXMin, nodesYMin, occupancy.size(), xMin, yMin, cellSize, nodeStamps_);
+	// the cells the live frame saw keep the update's stamp until the grid is re-assembled, so that
+	// they do not go back to an older node's stamp once the live frame stops seeing them
+	if(!liveCells_.empty() || !liveStamps_.empty())
+	{
+		if(liveStamps_.size() != occupancy.size() || liveStampsOrigin_ != cv::Point2f(xMin, yMin))
+		{
+			// the map grew: move the stamps to its new origin
+			cv::Mat moved(occupancy.size(), CV_64FC1, cv::Scalar(std::numeric_limits<double>::quiet_NaN()));
+			if(!liveStamps_.empty())
+			{
+				const cv::Point offset((int)std::round((liveStampsOrigin_.x - xMin) / cellSize), (int)std::round((liveStampsOrigin_.y - yMin) / cellSize));
+				const cv::Rect overlap = cv::Rect(offset, liveStamps_.size()) & cv::Rect(cv::Point(), occupancy.size());
+				liveStamps_(overlap - offset).copyTo(moved(overlap));
+			}
+			liveStamps_ = moved;
+			liveStampsOrigin_ = cv::Point2f(xMin, yMin);
+		}
+		for(const cv::Point2f & cell : liveCells_)
+		{
+			const int col = (cell.x - xMin) / cellSize;
+			const int row = (cell.y - yMin) / cellSize;
+			if(col >= 0 && row >= 0 && col < occupancy.cols && row < occupancy.rows)
+			{
+				liveStamps_.at<double>(row, col) = stamp.seconds();
+			}
+		}
+		liveCells_.clear(); // seen on the update only, not on a later publication without one
+		const double * live = liveStamps_.ptr<double>();
+		for(size_t i=0; i<msg.last_seen.size(); ++i)
+		{
+			if(std::isnan(msg.last_seen[i]) || live[i] > msg.last_seen[i])
+			{
+				msg.last_seen[i] = live[i];
+			}
+		}
+	}
 	lastSeenPub_->publish(msg);
 	latched_.at(&lastSeenPub_) = true;
 }
