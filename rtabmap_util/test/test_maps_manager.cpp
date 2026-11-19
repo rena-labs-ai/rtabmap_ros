@@ -330,6 +330,27 @@ protected:
 		spinFor(std::chrono::milliseconds(150));
 	}
 
+	/**
+	 * @brief One update of the scene at @p poses with map_always_update's live frame (node 0) at
+	 * @p livePose seeing @p obstacles, published with the stamp @p seconds.
+	 * @return whether @p lastSeen received a new map/last_seen
+	 */
+	bool updateLive(
+			const Collector<rtabmap_msgs::msg::LastSeenGrid> & lastSeen, int seconds,
+			const std::vector<cv::Point3f> & obstacles,
+			std::map<int, rtabmap::Transform> poses = posesOfScene(),
+			const rtabmap::Transform & livePose = rtabmap::Transform::getIdentity())
+	{
+		const size_t received = lastSeen.size();
+		std::map<int, rtabmap::Signature> signatures = scene();
+		signatures.insert(std::make_pair(0, makeGridSignature(0, rtabmap::Transform(), {}, obstacles)));
+		poses.insert(std::make_pair(0, livePose));
+		const std::map<int, rtabmap::Transform> filtered =
+				maps_->updateMapCaches(poses, /*memory=*/0, true, false, signatures);
+		maps_->publishMaps(filtered, rclcpp::Time(seconds, 0, RCL_ROS_TIME), "map");
+		return spinUntil([&]() { return lastSeen.size() > received; });
+	}
+
 	/// Subscribes and waits until MapsManager has seen the subscription.
 	template <typename MsgT>
 	std::shared_ptr<Collector<MsgT>> collectFromMaps(const std::string & name)
@@ -566,6 +587,72 @@ TEST_F(MapsManagerTest, LastSeenStampsTheCellsTheLiveFrameSees)
 	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
 	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1010.0) << "seen by the live frame: the update's stamp";
 	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 3.0, -0.1)], 1002.0) << "out of the live frame: node 2's stamp";
+}
+
+TEST_F(MapsManagerTest, LastSeenKeepsTheLiveStampsOnceTheLiveFrameLooksAway)
+{
+	start({rclcpp::Parameter("map_always_update", true),
+		   rclcpp::Parameter("map_empty_ray_tracing", false)});
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+
+	ASSERT_TRUE(updateLive(*lastSeen, 1010, {cv::Point3f(1.0f, 0.0f, 0.0f)}));  // node 1's obstacle
+	ASSERT_TRUE(updateLive(*lastSeen, 1020, {cv::Point3f(0.5f, -0.1f, 0.0f)}));  // node 1's ground
+	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
+
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1010.0) << "seen live at 1010, by no node since: kept";
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 0.5, -0.1)], 1020.0) << "seen live now";
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 3.0, -0.1)], 1002.0) << "never seen live: node 2's stamp";
+}
+
+TEST_F(MapsManagerTest, LastSeenDropsTheLiveStampsWhenTheGridIsReassembled)
+{
+	start({rclcpp::Parameter("map_always_update", true),
+		   rclcpp::Parameter("map_empty_ray_tracing", false)});
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+
+	ASSERT_TRUE(updateLive(*lastSeen, 1010, {cv::Point3f(1.0f, 0.0f, 0.0f)}));
+	std::map<int, rtabmap::Transform> moved = posesOfScene();
+	moved.at(2) = rtabmap::Transform(2.0f, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f);  // e.g. a loop closure
+	ASSERT_TRUE(updateLive(*lastSeen, 1020, {cv::Point3f(0.5f, -0.1f, 0.0f)}, moved));
+	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
+
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1001.0) << "the grid is re-assembled from its nodes: node 1's stamp";
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 0.5, -0.1)], 1020.0) << "seen live after the re-assembly";
+}
+
+TEST_F(MapsManagerTest, LastSeenDropsTheLiveStampsOnClear)
+{
+	start({rclcpp::Parameter("map_always_update", true),
+		   rclcpp::Parameter("map_empty_ray_tracing", false)});
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+
+	ASSERT_TRUE(updateLive(*lastSeen, 1010, {cv::Point3f(1.0f, 0.0f, 0.0f)}));
+	maps_->clear();
+	ASSERT_TRUE(updateLive(*lastSeen, 1020, {cv::Point3f(0.5f, -0.1f, 0.0f)}));
+	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
+
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1001.0) << "seen live before the clear: node 1's stamp";
+}
+
+TEST_F(MapsManagerTest, LastSeenKeepsNoLiveStampsWithoutASubscriber)
+{
+	start({rclcpp::Parameter("map_always_update", true),
+		   rclcpp::Parameter("map_empty_ray_tracing", false)});
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+
+	ASSERT_TRUE(updateLive(*lastSeen, 1010, {cv::Point3f(1.0f, 0.0f, 0.0f)}));
+	lastSeen->subscription.reset();
+	ASSERT_TRUE(spinUntil([&]() { return !maps_->hasSubscribers(); }));
+	maps_->publishMaps(posesOfScene(), rclcpp::Time(1015, 0, RCL_ROS_TIME), "map");
+	lastSeen = collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+	ASSERT_TRUE(updateLive(*lastSeen, 1020, {cv::Point3f(0.5f, -0.1f, 0.0f)}));
+	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
+
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1001.0) << "seen live before nobody listened: node 1's stamp";
 }
 
 TEST_F(MapsManagerTest, CellSizeParameterChangesTheResolution)

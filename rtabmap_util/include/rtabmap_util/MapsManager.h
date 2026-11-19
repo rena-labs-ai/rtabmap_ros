@@ -256,6 +256,8 @@ private:
 	rclcpp::Publisher<rtabmap_msgs::msg::LastSeenGrid>::SharedPtr lastSeenPub_;
 	std::map<int, double> nodeStamps_; ///< stamps of the nodes the cells were last observed by
 	std::vector<cv::Point2f> liveCells_; ///< map-frame cells the live frame (node 0) saw on the last update
+	cv::Mat liveStamps_; ///< CV_64FC1 on the cells of the last map/last_seen: when the live frame last saw each (NaN: not since the grid was assembled)
+	cv::Point2f liveStampsOrigin_; ///< map-frame origin (xMin, yMin) of liveStamps_
 	void rememberStamps(
 			const std::map<int, rtabmap::Transform> & poses,
 			const rtabmap::Memory * memory,
