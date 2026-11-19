@@ -693,6 +693,32 @@ TEST_F(MapsManagerTest, LastSeenStampsTheLiveCellsOnlyWithTheUpdateThatSawThem)
 	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1010.0) << "seen live at 1010 only";
 }
 
+TEST_F(MapsManagerTest, LastSeenDropsTheLiveCellsOfAnUpdateNobodyListenedTo)
+{
+	start({rclcpp::Parameter("map_always_update", true),
+		   rclcpp::Parameter("map_empty_ray_tracing", false)});
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+
+	// an update with the live frame, then the subscriber leaves before its publication
+	std::map<int, rtabmap::Signature> signatures = scene();
+	signatures.insert(std::make_pair(0, makeGridSignature(0, rtabmap::Transform(), {}, {cv::Point3f(1.0f, 0.0f, 0.0f)})));
+	std::map<int, rtabmap::Transform> poses = posesOfScene();
+	poses.insert(std::make_pair(0, rtabmap::Transform::getIdentity()));
+	const std::map<int, rtabmap::Transform> filtered =
+			maps_->updateMapCaches(poses, /*memory=*/0, true, false, signatures);
+	lastSeen->subscription.reset();
+	ASSERT_TRUE(spinUntil([&]() { return !maps_->hasSubscribers(); }));
+	maps_->publishMaps(filtered, rclcpp::Time(1010, 0, RCL_ROS_TIME), "map");
+	// a subscriber again, and a publication without an update
+	lastSeen = collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+	maps_->publishMaps(filtered, rclcpp::Time(1020, 0, RCL_ROS_TIME), "map");
+	ASSERT_TRUE(spinUntil([&]() { return !lastSeen->empty(); }));
+	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
+
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1001.0) << "seen live at 1010, not 1020: node 1's stamp";
+}
+
 TEST_F(MapsManagerTest, CellSizeParameterChangesTheResolution)
 {
 	rtabmap::ParametersMap parameters;

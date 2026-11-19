@@ -1563,6 +1563,7 @@ void MapsManager::publishLastSeen(const rclcpp::Time & stamp, const std::string 
 	if(lastSeenPub_->get_subscription_count() == 0)
 	{
 		latched_.at(&lastSeenPub_) = false;
+		liveCells_.clear();
 		liveStamps_ = cv::Mat(); // not kept up to date without a subscriber
 		return;
 	}
