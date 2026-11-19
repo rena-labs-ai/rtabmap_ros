@@ -676,6 +676,23 @@ TEST_F(MapsManagerTest, LastSeenPlacesTheLiveCellsAtTheirHeight)
 	EXPECT_TRUE(std::isnan(map.last_seen[cellIndex(map.info, flattened.x, flattened.y)])) << "the obstacle placed without its height: never seen";
 }
 
+TEST_F(MapsManagerTest, LastSeenStampsTheLiveCellsOnlyWithTheUpdateThatSawThem)
+{
+	start({rclcpp::Parameter("map_always_update", true),
+		   rclcpp::Parameter("map_empty_ray_tracing", false)});
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+
+	ASSERT_TRUE(updateLive(*lastSeen, 1010, {cv::Point3f(1.0f, 0.0f, 0.0f)}));
+	// published again without an update, as rtabmap_slam's republishMaps() does: nothing was seen since
+	maps_->publishMaps(posesOfScene(), rclcpp::Time(1020, 0, RCL_ROS_TIME), "map");
+	ASSERT_TRUE(spinUntil([&]() { return lastSeen->size() > 1; }));
+	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
+
+	EXPECT_EQ(map.header.stamp.sec, 1020);
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1010.0) << "seen live at 1010 only";
+}
+
 TEST_F(MapsManagerTest, CellSizeParameterChangesTheResolution)
 {
 	rtabmap::ParametersMap parameters;

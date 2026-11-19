@@ -1615,6 +1615,7 @@ void MapsManager::publishLastSeen(const rclcpp::Time & stamp, const std::string 
 				liveStamps_.at<double>(row, col) = stamp.seconds();
 			}
 		}
+		liveCells_.clear(); // seen on the update only, not on a later publication without one
 		const double * live = liveStamps_.ptr<double>();
 		for(size_t i=0; i<msg.last_seen.size(); ++i)
 		{
