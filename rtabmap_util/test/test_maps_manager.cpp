@@ -10,6 +10,7 @@ All rights reserved. (BSD-3-Clause, see the repository root.)
 #include <rtabmap/core/Compression.h>
 #include <rtabmap/core/Signature.h>
 #include <rtabmap/core/global_map/OccupancyGrid.h>
+#include <rtabmap/core/util3d_transforms.h>
 #include <rtabmap/utilite/UConversion.h>
 #include <rtabmap/utilite/UStl.h>
 
@@ -653,6 +654,26 @@ TEST_F(MapsManagerTest, LastSeenKeepsNoLiveStampsWithoutASubscriber)
 	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
 
 	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, 1.0, 0.0)], 1001.0) << "seen live before nobody listened: node 1's stamp";
+}
+
+TEST_F(MapsManagerTest, LastSeenPlacesTheLiveCellsAtTheirHeight)
+{
+	// a 3D local grid seen from a pitched live pose: the grid places each cell with its z, so must last-seen
+	start({rclcpp::Parameter("map_always_update", true),
+		   rclcpp::Parameter("map_empty_ray_tracing", false)});
+	std::shared_ptr<Collector<rtabmap_msgs::msg::LastSeenGrid>> lastSeen =
+			collectFromMaps<rtabmap_msgs::msg::LastSeenGrid>("map/last_seen");
+
+	const rtabmap::Transform pitched(0.0f, 0.0f, 0.0f, 0.0f, 0.2f, 0.0f);
+	const cv::Point3f obstacle(1.0f, 0.5f, 0.5f);
+	ASSERT_TRUE(updateLive(*lastSeen, 1010, {obstacle}, posesOfScene(), pitched));
+	const rtabmap_msgs::msg::LastSeenGrid & map = lastSeen->back();
+
+	const cv::Point3f placed = rtabmap::util3d::transformPoint(obstacle, pitched);
+	const cv::Point3f flattened = rtabmap::util3d::transformPoint(cv::Point3f(obstacle.x, obstacle.y, 0.0f), pitched);
+	ASSERT_NE(cellIndex(map.info, placed.x, placed.y), cellIndex(map.info, flattened.x, flattened.y));
+	EXPECT_DOUBLE_EQ(map.last_seen[cellIndex(map.info, placed.x, placed.y)], 1010.0) << "the cell the grid placed the obstacle on";
+	EXPECT_TRUE(std::isnan(map.last_seen[cellIndex(map.info, flattened.x, flattened.y)])) << "the obstacle placed without its height: never seen";
 }
 
 TEST_F(MapsManagerTest, CellSizeParameterChangesTheResolution)

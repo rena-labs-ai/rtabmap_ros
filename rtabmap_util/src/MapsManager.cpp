@@ -697,10 +697,12 @@ std::map<int, rtabmap::Transform> MapsManager::updateMapCaches(
 			{
 				for(const cv::Mat * cells : {&liveGrid->second.groundCells, &liveGrid->second.obstacleCells, &liveGrid->second.emptyCells})
 				{
+					// as OccupancyGrid::assemble(): 2 and 5 channels are 2D cells, the others carry their z
+					const bool is3D = cells->channels() != 2 && cells->channels() != 5;
 					for(int i=0; i<cells->cols; ++i)
 					{
 						const float * p = cells->ptr<float>(0, i);
-						const cv::Point3f pt = util3d::transformPoint(cv::Point3f(p[0], p[1], 0.0f), live->second);
+						const cv::Point3f pt = util3d::transformPoint(cv::Point3f(p[0], p[1], is3D?p[2]:0.0f), live->second);
 						liveCells_.push_back(cv::Point2f(pt.x, pt.y));
 					}
 				}
